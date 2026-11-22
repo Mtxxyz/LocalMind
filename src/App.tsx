@@ -5,7 +5,6 @@ import { PanelLeftOpen } from 'lucide-react'
 import { QuickCapture } from './components/capture/QuickCapture'
 import { CommandPalette } from './components/layout/CommandPalette'
 import { EditorPane } from './components/layout/EditorPane'
-import { NoteList } from './components/layout/NoteList'
 import { Sidebar } from './components/layout/Sidebar'
 import { LockScreen } from './components/lock/LockScreen'
 import { ReminderToast } from './components/reminders/ReminderToast'
@@ -111,7 +110,6 @@ export default function App() {
   return (
     <div className="relative flex h-full w-full overflow-hidden bg-[var(--bg)] text-[var(--text)]">
       {!focusMode && <Sidebar />}
-      {!focusMode && <NoteList />}
       <EditorPane />
       {focusMode && (
         <button

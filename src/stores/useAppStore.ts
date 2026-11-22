@@ -35,6 +35,7 @@ interface AppState {
   editMode: boolean
   focusMode: boolean
   settingsOpen: boolean
+  settingsTab: 'appearance' | 'security' | 'data' | 'about'
   commandOpen: boolean
   loading: boolean
 
@@ -70,6 +71,7 @@ interface AppState {
   setEditMode: (value: boolean) => void
   setFocusMode: (value: boolean) => void
   setSettingsOpen: (value: boolean) => void
+  setSettingsTab: (value: 'appearance' | 'security' | 'data' | 'about') => void
   setCommandOpen: (value: boolean) => void
   setUnlocked: (value: boolean) => void
 }
@@ -90,6 +92,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   editMode: false,
   focusMode: false,
   settingsOpen: false,
+  settingsTab: 'appearance',
   commandOpen: false,
   loading: true,
 
@@ -295,6 +298,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setEditMode: (value) => set({ editMode: value }),
   setFocusMode: (value) => set({ focusMode: value }),
   setSettingsOpen: (value) => set({ settingsOpen: value }),
+  setSettingsTab: (value) => set({ settingsTab: value }),
   setCommandOpen: (value) => set({ commandOpen: value }),
   setUnlocked: (value) => set({ unlocked: value }),
 }))
