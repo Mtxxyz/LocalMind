@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { open, save } from '@tauri-apps/plugin-dialog'
+import { open as openExternal } from '@tauri-apps/plugin-shell'
 import { Database, Download, Github, Keyboard, Palette, ShieldCheck, Upload } from 'lucide-react'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/utils'
@@ -125,8 +126,7 @@ export function SettingsPanel() {
                 <div className="text-xs font-medium text-[var(--muted)]">About the developer</div>
                 <a
                   href="https://github.com/Mxyz106"
-                  target="_blank"
-                  rel="noreferrer"
+                  onClick={(e) => { e.preventDefault(); void openExternal('https://github.com/Mxyz106') }}
                   className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3 transition-colors hover:border-[var(--accent)]"
                 >
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--accent)]">
@@ -150,8 +150,7 @@ export function SettingsPanel() {
                       <a
                         key={s.label}
                         href={s.href}
-                        target="_blank"
-                        rel="noreferrer"
+                        onClick={(e) => { e.preventDefault(); void openExternal(s.href) }}
                         className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-[12px] transition-colors hover:border-[var(--accent)]"
                       >
                         <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />

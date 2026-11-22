@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import MDEditor from '@uiw/react-md-editor'
+import remarkBreaks from 'remark-breaks'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import {
@@ -244,8 +245,8 @@ export function EditorPane() {
         </IconButton>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-8 pb-16 pt-9">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col px-6 pb-8 pt-6">
           <input
             value={title}
             onChange={(e) => onTitle(e.target.value)}
@@ -286,7 +287,7 @@ export function EditorPane() {
             </div>
           )}
 
-          <div className="mt-6">
+          <div className="mt-6 min-h-0 flex-1">
             <MDEditor
               value={body}
               onChange={onBody}
@@ -294,7 +295,8 @@ export function EditorPane() {
               visibleDragbar={false}
               hideToolbar={!editMode}
               commandsFilter={(command) => (command.name === 'fullscreen' ? false : command)}
-              height={520}
+              previewOptions={{ remarkPlugins: [remarkBreaks] }}
+              height="100%"
               textareaProps={{ readOnly: !editMode, placeholder: 'Start writing in Markdown…' }}
             />
           </div>
