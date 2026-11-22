@@ -6,12 +6,13 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
-  Eye,
   FileText,
   Folder as FolderIcon,
   Github,
   Hash,
   Inbox,
+  Lock,
+  LogOut,
   Pin,
   Plus,
   Search,
@@ -175,6 +176,7 @@ export function Sidebar() {
     deleteTag,
     setSettingsOpen,
     setSettingsTab,
+    setUnlocked,
     emptyTrash,
   } = useAppStore()
 
@@ -283,25 +285,26 @@ export function Sidebar() {
         </div>
       </div>
 
-      <div className="flex items-center gap-1 overflow-x-auto px-3 pb-2">
+      <div className="flex items-center gap-1 px-3 pb-2">
         {[
-          { kind: 'all' as const, label: 'All', icon: <FileText size={13} /> },
-          { kind: 'reminders' as const, label: 'Reminders', icon: <BellRing size={13} /> },
-          { kind: 'archive' as const, label: 'Archive', icon: <Archive size={13} /> },
-          { kind: 'trash' as const, label: 'Trash', icon: <Trash2 size={13} /> },
+          { kind: 'all' as const, label: 'All notes', icon: <FileText size={15} /> },
+          { kind: 'reminders' as const, label: 'Reminders', icon: <BellRing size={15} /> },
+          { kind: 'archive' as const, label: 'Archive', icon: <Archive size={15} /> },
+          { kind: 'trash' as const, label: 'Trash', icon: <Trash2 size={15} /> },
         ].map((item) => (
           <button
             key={item.kind}
+            title={item.label}
+            aria-label={item.label}
             onClick={() => setFilter({ kind: item.kind })}
             className={cn(
-              'flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] transition-colors',
+              'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors',
               isActive(item.kind)
-                ? 'bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] font-medium text-[var(--accent)]'
+                ? 'bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] text-[var(--accent)]'
                 : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]',
             )}
           >
             {item.icon}
-            {item.label}
           </button>
         ))}
       </div>
@@ -511,11 +514,14 @@ export function Sidebar() {
             Settings
           </button>
           <IconButton
-            label="Password & security"
+            label="Lock app (requires password to reopen)"
             className="h-9 w-9"
-            onClick={() => { setSettingsTab('security'); setSettingsOpen(true) }}
+            onClick={() => {
+              void api.setAppLocked(true)
+              setUnlocked(false)
+            }}
           >
-            <Eye size={16} />
+            <LogOut size={16} />
           </IconButton>
         </div>
         <div className="mt-2 flex items-center gap-1.5 px-2.5 text-[10px] text-[var(--faint)]">

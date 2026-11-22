@@ -66,6 +66,9 @@ export default function App() {
       } else if (e.shiftKey && key === 'f') {
         e.preventDefault()
         setFocusMode(!focusMode)
+      } else if (key === '0') {
+        e.preventDefault()
+        setFocusMode(!focusMode)
       } else if (key === 'e') {
         e.preventDefault()
         setEditMode(!editMode)

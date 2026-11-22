@@ -9,6 +9,7 @@ import {
   Download,
   FilePlus2,
   Hash,
+  Maximize2,
   Paperclip,
   Pin,
   RotateCcw,
@@ -30,6 +31,8 @@ export function EditorPane() {
     attachments,
     reminders,
     editMode,
+    focusMode,
+    setFocusMode,
     setEditMode,
     updateNote,
     togglePin,
@@ -168,6 +171,9 @@ export function EditorPane() {
         <IconButton label={editMode ? 'Preview mode (Ctrl+E)' : 'Edit mode (Ctrl+E)'} active={editMode} onClick={() => setEditMode(!editMode)}>
           <Hash size={15} />
         </IconButton>
+        <IconButton label="Focus mode (Ctrl+Shift+F / Ctrl+0)" active={focusMode} onClick={() => setFocusMode(!focusMode)}>
+          <Maximize2 size={15} />
+        </IconButton>
         <IconButton label={note.pinned ? 'Unpin' : 'Pin'} active={note.pinned} onClick={() => void togglePin(note.id)}>
           <Pin size={15} />
         </IconButton>
@@ -287,6 +293,7 @@ export function EditorPane() {
               preview={editMode ? 'edit' : 'preview'}
               visibleDragbar={false}
               hideToolbar={!editMode}
+              commandsFilter={(command) => (command.name === 'fullscreen' ? false : command)}
               height={520}
               textareaProps={{ readOnly: !editMode, placeholder: 'Start writing in Markdown…' }}
             />

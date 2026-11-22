@@ -75,16 +75,9 @@ export function SettingsPanel() {
           {tab === 'security' && <PasswordSettings />}
           {tab === 'data' && (
             <div className="space-y-5">
-              <div className="min-w-0">
-                <div className="mb-2 text-xs font-medium text-[var(--muted)]">Local data folder</div>
-                <div
-                  title={dataPath}
-                  className="max-w-full overflow-x-auto whitespace-nowrap rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 font-mono text-[11px] text-[var(--muted)]"
-                >
-                  {dataPath || 'Loading…'}
-                </div>
-                <p className="mt-2 text-[11px] leading-relaxed text-[var(--faint)]">
-                  All notes, attachments and settings live here. Nothing is uploaded anywhere.
+              <div>
+                <p className="text-[11px] leading-relaxed text-[var(--faint)]">
+                  All notes, attachments and settings live in a <code className="rounded bg-[var(--surface-2)] px-1">LocalMind-data</code> folder next to the app. Nothing is uploaded anywhere.
                 </p>
               </div>
 
@@ -145,6 +138,29 @@ export function SettingsPanel() {
                   </div>
                   <span className="text-[11px] text-[var(--muted)]">View profile →</span>
                 </a>
+
+                <div className="space-y-2">
+                  <div className="text-[11px] font-medium text-[var(--muted)]">Find me on</div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: 'YouTube', handle: '@mxyz106', href: 'https://www.youtube.com/@mxyz106', color: '#ff0000' },
+                      { label: 'Instagram', handle: '@mxyz106', href: 'https://www.instagram.com/mxyz106', color: '#e1306c' },
+                      { label: 'Telegram', handle: '@mxyz106', href: 'https://t.me/mxyz106', color: '#229ed9' },
+                    ].map((s) => (
+                      <a
+                        key={s.label}
+                        href={s.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-[12px] transition-colors hover:border-[var(--accent)]"
+                      >
+                        <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
+                        <span className="font-medium">{s.label}</span>
+                        <span className="text-[11px] text-[var(--faint)]">{s.handle}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
                 <p className="text-[11px] leading-relaxed text-[var(--faint)]">
                   LocalMind is an offline-first notes app. No accounts, no telemetry, no network calls —
                   everything stays on your device. Built with Tauri v2, React and SQLite.
