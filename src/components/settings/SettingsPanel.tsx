@@ -124,7 +124,7 @@ export function SettingsPanel() {
               <div className="space-y-3">
                 <div className="text-xs font-medium text-[var(--muted)]">About the developer</div>
                 <a
-                  href="https://github.com/Mtxxyz"
+                  href="https://github.com/Mxyz106"
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3 transition-colors hover:border-[var(--accent)]"
@@ -133,8 +133,8 @@ export function SettingsPanel() {
                     <Github size={18} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-medium">Mtxxyz (Mxyz)</div>
-                    <div className="truncate text-[11px] text-[var(--faint)]">github.com/Mtxxyz</div>
+                    <div className="text-[13px] font-medium">Mxyz106 (Mxyz)</div>
+                    <div className="truncate text-[11px] text-[var(--faint)]">github.com/Mxyz106</div>
                   </div>
                   <span className="text-[11px] text-[var(--muted)]">View profile →</span>
                 </a>
