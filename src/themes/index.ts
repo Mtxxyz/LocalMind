@@ -192,3 +192,12 @@ export function applyPalette(palette: Palette, accentOverride?: string, mode?: '
   }
   root.style.colorScheme = mode ?? (palette.bg.startsWith('#0') || palette.bg === '#000000' ? 'dark' : 'light')
 }
+
+/** Applies the persisted interface settings (glassiness + interface zoom). */
+export function applyVisualSettings(glassiness: number, uiZoom: number) {
+  const root = document.documentElement
+  root.style.setProperty('--glass', String(glassiness / 100))
+  root.style.setProperty('--glass-alpha', `${100 - glassiness}%`)
+  root.style.setProperty('--glass-blur', `${(glassiness * 0.18).toFixed(1)}px`)
+  root.style.setProperty('--ui-zoom', String(uiZoom / 100))
+}

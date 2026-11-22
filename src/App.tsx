@@ -6,6 +6,7 @@ import { QuickCapture } from './components/capture/QuickCapture'
 import { CommandPalette } from './components/layout/CommandPalette'
 import { EditorPane } from './components/layout/EditorPane'
 import { Sidebar } from './components/layout/Sidebar'
+import { TitleBar } from './components/layout/TitleBar'
 import { LockScreen } from './components/lock/LockScreen'
 import { ReminderToast } from './components/reminders/ReminderToast'
 import { SettingsPanel } from './components/settings/SettingsPanel'
@@ -111,9 +112,12 @@ export default function App() {
   if (!unlocked) return <LockScreen />
 
   return (
-    <div className="relative flex h-full w-full overflow-hidden bg-[var(--bg)] text-[var(--text)]">
-      {!focusMode && <Sidebar />}
-      <EditorPane />
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-transparent text-[var(--text)]">
+      <TitleBar />
+      <div className="flex min-h-0 flex-1">
+        {!focusMode && <Sidebar />}
+        <EditorPane />
+      </div>
       {focusMode && (
         <button
           onClick={() => setFocusMode(false)}

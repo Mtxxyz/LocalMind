@@ -104,7 +104,7 @@ export function Modal({ open, onClose, title, children, width = 'max-w-lg' }: Mo
           }}
         >
           <motion.div
-            className={cn('w-[calc(100%-32px)] rounded-2xl border border-[var(--border)] bg-[var(--elevated)] p-5 shadow-soft', width)}
+            className={cn('glass-panel w-[calc(100%-32px)] rounded-2xl border border-[var(--border)] p-5 shadow-soft', width)}
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 4 }}

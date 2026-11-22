@@ -17,6 +17,10 @@
   --danger: #ff6b81;
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
   --selection: rgba(124, 140, 255, 0.22);
+  --glass: 0.55;
+  --glass-alpha: 45%;
+  --glass-blur: 9.9px;
+  --ui-zoom: 1;
   color-scheme: dark;
 }
 
@@ -32,12 +36,62 @@ body,
 }
 
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(900px 520px at 8% -12%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%),
+    radial-gradient(760px 520px at 105% 105%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 70%),
+    var(--bg);
   color: var(--text);
   font-family: 'Inter', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+}
+
+/* Interface zoom scales the whole app while keeping the window fixed. */
+#root {
+  zoom: var(--ui-zoom);
+}
+
+/* Frosted panels with soft, modern shapes. */
+.glass-panel {
+  background: color-mix(in srgb, var(--surface) var(--glass-alpha), transparent) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+/* Decorative title / body divider with a geometric accent. */
+.title-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 6px;
+}
+.title-divider .divider-line {
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(90deg, transparent, var(--border) 25%, var(--border) 75%, transparent);
+}
+.title-divider .divider-gem {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  transform: rotate(45deg);
+  border-radius: 3px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Shape-based accents for controls and cards. */
+.shape-card {
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--surface) var(--glass-alpha), transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent);
+}
+.shape-pill {
+  border-radius: 999px;
 }
 
 ::selection {
@@ -192,6 +246,17 @@ aside, main, .w-md-editor {
 }
 button, input, textarea, select {
   border-radius: 10px;
+}
+
+input[type='range'] {
+  accent-color: var(--accent);
+}
+input[type='range']::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 

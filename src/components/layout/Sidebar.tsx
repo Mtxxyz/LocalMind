@@ -241,7 +241,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)]">
+    <aside className="glass-panel flex h-full w-[300px] shrink-0 flex-col border-r border-[var(--border)]">
       <div className="flex h-[56px] items-center gap-2.5 px-4">
         <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[var(--accent)] text-[var(--accent-fg)]">
           <ShieldCheck size={18} strokeWidth={2.2} />

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { api } from '../lib/api'
-import { applyPalette, getTheme } from '../themes'
+import { applyPalette, applyVisualSettings, getTheme } from '../themes'
 import type {
   Appearance,
   Attachment,
@@ -11,6 +11,12 @@ import type {
   Tag,
   ViewFilter,
 } from '../types'
+
+function clampNumber(value: string | undefined, fallback: number, min: number, max: number) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(max, Math.max(min, Math.round(parsed)))
+}
 
 function effectiveAppearance(appearance: Appearance): 'light' | 'dark' {
   if (appearance === 'system') {
@@ -34,8 +40,10 @@ interface AppState {
   accent: string
   editMode: boolean
   focusMode: boolean
+  glassiness: number
+  uiZoom: number
   settingsOpen: boolean
-  settingsTab: 'appearance' | 'security' | 'data' | 'about'
+  settingsTab: 'appearance' | 'interface' | 'security' | 'data' | 'about'
   commandOpen: boolean
   loading: boolean
 
@@ -70,8 +78,10 @@ interface AppState {
   refreshTheme: () => void
   setEditMode: (value: boolean) => void
   setFocusMode: (value: boolean) => void
+  setGlassiness: (value: number) => Promise<void>
+  setUiZoom: (value: number) => Promise<void>
   setSettingsOpen: (value: boolean) => void
-  setSettingsTab: (value: 'appearance' | 'security' | 'data' | 'about') => void
+  setSettingsTab: (value: 'appearance' | 'interface' | 'security' | 'data' | 'about') => void
   setCommandOpen: (value: boolean) => void
   setUnlocked: (value: boolean) => void
 }
@@ -91,6 +101,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   accent: '',
   editMode: false,
   focusMode: false,
+  glassiness: 55,
+  uiZoom: 100,
   settingsOpen: false,
   settingsTab: 'appearance',
   commandOpen: false,
@@ -109,6 +121,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const themeId = map.get('theme') || 'midnight'
       const appearance = (map.get('appearance') || 'dark') as Appearance
       const accent = map.get('accent') || ''
+      const glassiness = clampNumber(map.get('glass'), 55, 0, 100)
+      const uiZoom = clampNumber(map.get('zoom'), 100, 80, 140)
       set({
         notes,
         folders,
@@ -117,11 +131,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         themeId,
         appearance,
         accent,
+        glassiness,
+        uiZoom,
         loading: false,
       })
       const template = getTheme(themeId)
       const mode = effectiveAppearance(appearance)
       applyPalette(template[mode], accent, mode)
+      applyVisualSettings(glassiness, uiZoom)
     } catch (error) {
       console.error('Failed to load LocalMind data', error)
       set({ loading: false })
@@ -297,6 +314,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setEditMode: (value) => set({ editMode: value }),
   setFocusMode: (value) => set({ focusMode: value }),
+
+  setGlassiness: async (value) => {
+    const next = Math.min(100, Math.max(0, Math.round(value)))
+    set({ glassiness: next })
+    applyVisualSettings(next, get().uiZoom)
+    await api.setSetting('glass', String(next))
+  },
+
+  setUiZoom: async (value) => {
+    const next = Math.min(140, Math.max(80, Math.round(value)))
+    set({ uiZoom: next })
+    applyVisualSettings(get().glassiness, next)
+    await api.setSetting('zoom', String(next))
+  },
+
   setSettingsOpen: (value) => set({ settingsOpen: value }),
   setSettingsTab: (value) => set({ settingsTab: value }),
   setCommandOpen: (value) => set({ commandOpen: value }),

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { open as openExternal } from '@tauri-apps/plugin-shell'
-import { Database, Download, Github, Keyboard, Palette, ShieldCheck, Upload } from 'lucide-react'
+import { Database, Download, Github, Keyboard, Palette, ShieldCheck, Sparkles, Upload } from 'lucide-react'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/utils'
 import { useAppStore } from '../../stores/useAppStore'
@@ -9,10 +9,19 @@ import { Button, Divider, Modal } from '../ui'
 import { PasswordSettings } from './PasswordSettings'
 import { ThemePicker } from './ThemePicker'
 
-type Tab = 'appearance' | 'security' | 'data' | 'about'
+type Tab = 'appearance' | 'interface' | 'security' | 'data' | 'about'
 
 export function SettingsPanel() {
-  const { settingsOpen, setSettingsOpen, settingsTab, loadAll } = useAppStore()
+  const {
+    settingsOpen,
+    setSettingsOpen,
+    settingsTab,
+    loadAll,
+    glassiness,
+    uiZoom,
+    setGlassiness,
+    setUiZoom,
+  } = useAppStore()
   const [tab, setTab] = useState<Tab>(settingsTab)
 
   useEffect(() => {
@@ -27,6 +36,7 @@ export function SettingsPanel() {
 
   const tabs: { id: Tab; label: string; icon: ReactNode }[] = [
     { id: 'appearance', label: 'Appearance', icon: <Palette size={15} /> },
+    { id: 'interface', label: 'Interface', icon: <Sparkles size={15} /> },
     { id: 'security', label: 'Security', icon: <ShieldCheck size={15} /> },
     { id: 'data', label: 'Data', icon: <Database size={15} /> },
     { id: 'about', label: 'About', icon: <Github size={15} /> },
@@ -73,6 +83,60 @@ export function SettingsPanel() {
 
         <div className="min-h-[340px] flex-1">
           {tab === 'appearance' && <ThemePicker />}
+          {tab === 'interface' && (
+            <div className="space-y-6">
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-medium text-[var(--muted)]">Glassiness</span>
+                  <span className="text-[11px] tabular-nums text-[var(--accent)]">{glassiness}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={glassiness}
+                  onChange={(e) => void setGlassiness(Number(e.target.value))}
+                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--surface-2)] accent-[var(--accent)]"
+                  aria-label="Glassiness"
+                />
+                <p className="mt-2 text-[11px] leading-relaxed text-[var(--faint)]">
+                  Frosted translucent panels. Lower is more solid, higher is more glass-like.
+                </p>
+              </div>
+
+              <Divider />
+
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-medium text-[var(--muted)]">Interface zoom</span>
+                  <span className="text-[11px] tabular-nums text-[var(--accent)]">{uiZoom}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={80}
+                  max={140}
+                  step={5}
+                  value={uiZoom}
+                  onChange={(e) => void setUiZoom(Number(e.target.value))}
+                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--surface-2)] accent-[var(--accent)]"
+                  aria-label="Interface zoom"
+                />
+                <p className="mt-2 text-[11px] leading-relaxed text-[var(--faint)]">
+                  Scale the whole interface, including text and controls, from 80% to 140%.
+                </p>
+              </div>
+
+              <Divider />
+
+              <Button
+                variant="ghost"
+                onClick={() => { void setGlassiness(55); void setUiZoom(100) }}
+              >
+                Reset interface defaults
+              </Button>
+            </div>
+          )}
           {tab === 'security' && <PasswordSettings />}
           {tab === 'data' && (
             <div className="space-y-5">

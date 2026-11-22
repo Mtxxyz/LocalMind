@@ -155,7 +155,7 @@ export function EditorPane() {
 
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col bg-[var(--bg)]" data-color-mode={colorMode}>
-      <div className="flex h-[60px] shrink-0 items-center gap-1 border-b border-[var(--border)] px-4">
+      <div className="glass-panel flex h-[60px] shrink-0 items-center gap-1 border-b border-[var(--border)] px-4">
         <select
           value={note.folder_id ?? ''}
           onChange={(e) => void moveNote(note.id, e.target.value || null)}
@@ -258,6 +258,12 @@ export function EditorPane() {
             )}
           />
 
+          <div className="title-divider" aria-hidden="true">
+            <span className="divider-line" />
+            <span className="divider-gem" />
+            <span className="divider-line" />
+          </div>
+
           {note.tags.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {note.tags.map((tag) => (
@@ -321,7 +327,7 @@ export function EditorPane() {
         </div>
       </div>
 
-      <div className="flex h-8 shrink-0 items-center justify-between border-t border-[var(--border)] px-4 text-[10px] text-[var(--faint)]">
+      <div className="glass-panel flex h-8 shrink-0 items-center justify-between border-t border-[var(--border)] px-4 text-[10px] text-[var(--faint)]">
         <span>{wordCount} words · {body.length} characters</span>
         <div className="flex items-center gap-3">
           <span>{editMode ? 'Editing · Ctrl+E for preview' : 'Preview · Ctrl+E to edit'}</span>
