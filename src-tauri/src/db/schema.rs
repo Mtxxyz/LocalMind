@@ -19,17 +19,6 @@ CREATE TABLE IF NOT EXISTS folders (
     sort_order  INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS tags (
-    id    TEXT PRIMARY KEY,
-    name  TEXT NOT NULL UNIQUE
-);
-
-CREATE TABLE IF NOT EXISTS note_tags (
-    note_id  TEXT NOT NULL,
-    tag_id   TEXT NOT NULL,
-    PRIMARY KEY (note_id, tag_id)
-);
-
 CREATE TABLE IF NOT EXISTS attachments (
     id          TEXT PRIMARY KEY,
     note_id     TEXT NOT NULL,
@@ -57,7 +46,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
     id UNINDEXED,
     title,
     body,
-    tags,
     tokenize = 'unicode61 remove_diacritics 2'
 );
 

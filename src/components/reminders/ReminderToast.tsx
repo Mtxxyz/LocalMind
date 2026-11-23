@@ -1,4 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { listen } from '@tauri-apps/api/event'
+import type { PluginListener } from '@tauri-apps/api/core'
+import { onAction } from '@tauri-apps/plugin-notification'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { AnimatePresence, motion } from 'framer-motion'
 import { BellRing, X } from 'lucide-react'
 import { useAppStore } from '../../stores/useAppStore'
@@ -6,36 +10,79 @@ import type { Reminder } from '../../types'
 import { IconButton } from '../ui'
 
 export function ReminderToast() {
-  const { reminders, refreshReminders, fireReminder, selectNote, notes } = useAppStore()
-  const [active, setActive] = useState<Reminder | null>(null)
+  const { reminders, refreshReminders, fireReminder, selectNote, notes, unlocked } = useAppStore()
+  const [queue, setQueue] = useState<Reminder[]>([])
+  const active = queue[0] ?? null
+  const queued = useRef(new Set<string>())
+
+  useEffect(() => {
+    let listener: PluginListener | undefined
+    void onAction((event) => {
+      const extra = event.notification?.extra
+      const noteId = extra?.noteId
+      const reminderId = extra?.reminderId
+      const window = getCurrentWindow()
+      void window.show()
+      void window.setFocus()
+      if (typeof noteId === 'string') void selectNote(noteId)
+      if (typeof reminderId === 'string') void fireReminder(reminderId)
+    }).then((fn) => { listener = fn }).catch(() => {})
+    return () => { void listener?.unregister() }
+  }, [selectNote, fireReminder])
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+    void listen<Reminder>('reminder-due', (event) => {
+      const reminder = event.payload
+      queued.current.add(reminder.id)
+      setQueue((current) => (
+        current.some((r) => r.id === reminder.id) ? current : [...current, reminder]
+      ))
+    }).then((fn) => { unlisten = fn }).catch(() => {})
+    return () => { unlisten?.() }
+  }, [])
 
   useEffect(() => {
     const check = () => {
       const now = Date.now()
-      const due = reminders.find((r) => !r.fired && new Date(r.due_at).getTime() <= now)
-      if (due) setActive((current) => current?.id === due.id ? current : due)
+      const due = reminders.filter((r) => !r.fired && new Date(r.due_at).getTime() <= now)
+      for (const reminder of due) {
+        if (queued.current.has(reminder.id)) continue
+        queued.current.add(reminder.id)
+      }
+      if (due.length > 0) {
+        setQueue((current) => {
+          const existing = new Set(current.map((r) => r.id))
+          const additions = due.filter((r) => !existing.has(r.id))
+          return additions.length ? [...current, ...additions] : current
+        })
+      }
     }
     check()
     const timer = window.setInterval(() => {
-      void refreshReminders()
+      if (unlocked) void refreshReminders()
     }, 12_000)
     return () => window.clearInterval(timer)
-  }, [reminders, refreshReminders])
+  }, [reminders, refreshReminders, unlocked])
 
   useEffect(() => {
     if (!active) return
-    const timer = window.setTimeout(() => setActive(null), 12_000)
+    const timer = window.setTimeout(() => {
+      setQueue((current) => current.filter((r) => r.id !== active.id))
+      queued.current.delete(active.id)
+    }, 12_000)
     return () => window.clearTimeout(timer)
   }, [active])
 
   const dismiss = (openNote = false) => {
     if (!active) return
     void fireReminder(active.id)
+    queued.current.delete(active.id)
     if (openNote) {
       const note = notes.find((n) => n.id === active.note_id)
       if (note) selectNote(note.id)
     }
-    setActive(null)
+    setQueue((current) => current.filter((r) => r.id !== active.id))
   }
 
   return (

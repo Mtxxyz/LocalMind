@@ -1,4 +1,7 @@
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use chrono::Utc;
 use rusqlite::params;
@@ -29,11 +32,43 @@ fn mime_for(name: &str) -> &'static str {
     }
 }
 
+/// Resolve a stored attachment path while keeping all file access inside the
+/// app's attachments directory. Old databases stored absolute paths; those are
+/// accepted only when they point inside the current data folder.
+pub fn resolve_attachment_path(stored: &str) -> Result<PathBuf, String> {
+    let root = paths::attachments_dir();
+    let root = fs::canonicalize(&root).unwrap_or(root);
+    let candidate = Path::new(stored);
+    let candidate = if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        paths::attachments_dir().join(candidate)
+    };
+    let name = candidate
+        .file_name()
+        .ok_or_else(|| "Invalid attachment path".to_string())?;
+    let parent = candidate
+        .parent()
+        .ok_or_else(|| "Invalid attachment path".to_string())?;
+    let parent = fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+    if !parent.starts_with(&root) {
+        return Err("Attachment path is outside the data folder".to_string());
+    }
+    Ok(parent.join(name))
+}
+
+pub fn remove_attachment_file(stored: &str) {
+    if let Ok(path) = resolve_attachment_path(stored) {
+        let _ = fs::remove_file(path);
+    }
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub fn list_attachments(
     note_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<Attachment>, String> {
+    state.ensure_unlocked()?;
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare("SELECT * FROM attachments WHERE note_id=?1 ORDER BY created_at DESC")
@@ -64,6 +99,7 @@ pub fn attach_file(
     source_path: String,
     state: State<'_, AppState>,
 ) -> Result<Attachment, String> {
+    state.ensure_unlocked()?;
     let source = Path::new(&source_path);
     if !source.is_file() {
         return Err("Source file does not exist".into());
@@ -92,14 +128,15 @@ pub fn attach_file(
         id: id.clone(),
         note_id: note_id.clone(),
         filename,
-        stored_path: target.to_string_lossy().to_string(),
+        // Store a data-relative name so backups and portable folders survive moves.
+        stored_path: stored_name.clone(),
         mime: mime_for(&stored_name).to_string(),
         size,
         created_at: Utc::now().to_rfc3339(),
     };
 
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
-    conn.execute(
+    let result = conn.execute(
         "INSERT INTO attachments(id,note_id,filename,stored_path,mime,size,created_at)
          VALUES(?1,?2,?3,?4,?5,?6,?7)",
         params![
@@ -111,13 +148,17 @@ pub fn attach_file(
             item.size,
             item.created_at
         ],
-    )
-    .map_err(|e| e.to_string())?;
+    );
+    if let Err(error) = result {
+        let _ = fs::remove_file(&target);
+        return Err(error.to_string());
+    }
     Ok(item)
 }
 
 #[tauri::command(rename_all = "snake_case")]
 pub fn detach_attachment(id: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.ensure_unlocked()?;
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     let path: Option<String> = conn
         .query_row(
@@ -126,10 +167,10 @@ pub fn detach_attachment(id: String, state: State<'_, AppState>) -> Result<(), S
             |row| row.get(0),
         )
         .ok();
-    if let Some(p) = path {
-        let _ = fs::remove_file(&p);
-    }
     conn.execute("DELETE FROM attachments WHERE id=?1", params![id])
         .map_err(|e| e.to_string())?;
+    if let Some(p) = path {
+        remove_attachment_file(&p);
+    }
     Ok(())
 }

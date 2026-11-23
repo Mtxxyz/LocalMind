@@ -5,7 +5,6 @@ import type {
   Note,
   Reminder,
   Setting,
-  Tag,
 } from '../types'
 
 export const api = {
@@ -32,14 +31,6 @@ export const api = {
   updateFolder: (id: string, name: string, parent_id: string | null, color: string) =>
     invoke<void>('update_folder', { id, name, parent_id, color }),
   deleteFolder: (id: string) => invoke<void>('delete_folder', { id }),
-
-  listTags: () => invoke<Tag[]>('list_tags'),
-  createTag: (name: string) => invoke<Tag>('create_tag', { name }),
-  addTagToNote: (note_id: string, tag_id: string) =>
-    invoke<void>('add_tag_to_note', { note_id, tag_id }),
-  removeTagFromNote: (note_id: string, tag_id: string) =>
-    invoke<void>('remove_tag_from_note', { note_id, tag_id }),
-  deleteTag: (id: string) => invoke<void>('delete_tag', { id }),
 
   listAttachments: (note_id: string) =>
     invoke<Attachment[]>('list_attachments', { note_id }),

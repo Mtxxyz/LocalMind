@@ -28,6 +28,10 @@ pub fn get_settings(state: State<'_, AppState>) -> Result<Vec<Setting>, String> 
 
 #[tauri::command(rename_all = "snake_case")]
 pub fn set_setting(key: String, value: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.ensure_unlocked()?;
+    if key == "password_hash" {
+        return Err("Use the password commands to change the app lock".to_string());
+    }
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO settings(key,value) VALUES(?1,?2)
@@ -53,6 +57,7 @@ pub fn has_password(state: State<'_, AppState>) -> Result<bool, String> {
 
 #[tauri::command(rename_all = "snake_case")]
 pub fn set_password(password: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.ensure_unlocked()?;
     if password.len() < 4 {
         return Err("Password must be at least 4 characters".into());
     }
@@ -85,6 +90,7 @@ pub fn verify_password(password: String, state: State<'_, AppState>) -> Result<b
 
 #[tauri::command(rename_all = "snake_case")]
 pub fn remove_password(state: State<'_, AppState>) -> Result<(), String> {
+    state.ensure_unlocked()?;
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "UPDATE settings SET value='' WHERE key='password_hash'",
@@ -95,8 +101,9 @@ pub fn remove_password(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn get_data_path() -> String {
-    paths::data_dir().to_string_lossy().to_string()
+pub fn get_data_path(state: State<'_, AppState>) -> Result<String, String> {
+    state.ensure_unlocked()?;
+    Ok(paths::data_dir().to_string_lossy().to_string())
 }
 
 /// Called by the frontend once the password gate has been satisfied.

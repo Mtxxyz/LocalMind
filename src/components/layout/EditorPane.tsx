@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import MDEditor from '@uiw/react-md-editor'
+import { useCallback, useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type LiHTMLAttributes, type MouseEvent as ReactMouseEvent } from 'react'
+import MDEditor, { commands, type ICommand, type RefMDEditor } from '@uiw/react-md-editor'
 import remarkBreaks from 'remark-breaks'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { open, save } from '@tauri-apps/plugin-dialog'
@@ -9,12 +9,12 @@ import {
   BellRing,
   Download,
   FilePlus2,
-  Hash,
+  Folder as FolderIcon,
+  Pencil,
   Maximize2,
   Paperclip,
   Pin,
   RotateCcw,
-  Tag,
   Trash2,
   X,
 } from 'lucide-react'
@@ -23,12 +23,68 @@ import { cn, formatReminder, fromLocalInput, toLocalInput } from '../../lib/util
 import { useAppStore } from '../../stores/useAppStore'
 import { Button, EmptyState, Field, IconButton, Modal, TextInput } from '../ui'
 
+const FORMAT_COMMANDS: ICommand[] = [
+  commands.bold,
+  commands.italic,
+  commands.strikethrough,
+  commands.hr,
+  commands.heading1,
+  commands.heading2,
+  commands.heading3,
+  commands.link,
+  commands.quote,
+  commands.code,
+  commands.codeBlock,
+  commands.image,
+  commands.unorderedListCommand,
+  commands.orderedListCommand,
+  commands.checkedListCommand,
+  commands.table,
+]
+
+const TASK_LINE_RE = /^((?:\s*>\s*)*(?:\s*)(?:[-+*]|\d+[.)])\s+\[)( |x|X)(\])/
+
+function taskLineNumbers(markdown: string) {
+  return markdown
+    .split('\n')
+    .map((line, index) => (TASK_LINE_RE.test(line) ? index + 1 : null))
+    .filter((line): line is number => line !== null)
+}
+
+function setTaskCheckedAtLine(markdown: string, lineNo: number, checked: boolean) {
+  const lines = markdown.split('\n')
+  const index = lineNo - 1
+  const line = lines[index]
+  if (line === undefined) return markdown
+  const next = line.replace(
+    TASK_LINE_RE,
+    (_match, prefix: string, _mark: string, close: string) => `${prefix}${checked ? 'x' : ' '}${close}`,
+  )
+  if (next === line) return markdown
+  lines[index] = next
+  return lines.join('\n')
+}
+
+function PreviewTaskLine({
+  node,
+  className,
+  children,
+  ...rest
+}: LiHTMLAttributes<HTMLLIElement> & { node?: unknown }) {
+  const line = (node as { position?: { start?: { line?: number } } } | undefined)?.position?.start?.line
+  const isTask = String(className ?? '').includes('task-list-item')
+  return (
+    <li {...rest} className={className} data-task-line={isTask && line ? line : undefined}>
+      {children}
+    </li>
+  )
+}
+
 export function EditorPane() {
   const {
     notes,
     selectedId,
     folders,
-    tags,
     attachments,
     reminders,
     editMode,
@@ -41,13 +97,13 @@ export function EditorPane() {
     trashNote,
     restoreNote,
     moveNote,
-    createTagForNote,
-    toggleNoteTag,
     addAttachment,
     removeAttachment,
     addReminder,
     deleteReminder,
     selectNote,
+    registerPendingSave,
+    openFolderMenu,
     themeId,
     appearance,
   } = useAppStore()
@@ -60,12 +116,12 @@ export function EditorPane() {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [saved, setSaved] = useState(true)
-  const [tagOpen, setTagOpen] = useState(false)
-  const [tagDraft, setTagDraft] = useState('')
   const [reminderOpen, setReminderOpen] = useState(false)
   const [due, setDue] = useState('')
   const saveTimer = useRef<number | null>(null)
+  const saveGeneration = useRef(0)
   const synced = useRef<{ id: string; title: string; body: string } | null>(null)
+  const editorRef = useRef<RefMDEditor>(null)
 
   useEffect(() => {
     if (!note) {
@@ -86,6 +142,7 @@ export function EditorPane() {
       setBody(note.body)
       synced.current = { id: note.id, title: note.title, body: note.body }
     }
+    saveGeneration.current += 1
     setSaved(true)
   }, [note?.id, note?.title, note?.body])
 
@@ -117,13 +174,31 @@ export function EditorPane() {
     }
   }, [note?.id, addAttachment])
 
+  const persistDraft = useCallback(async () => {
+    const target = synced.current
+    if (!target) return
+    if (saveTimer.current) {
+      window.clearTimeout(saveTimer.current)
+      saveTimer.current = null
+    }
+    const generation = ++saveGeneration.current
+    await updateNote(target.id, target.title, target.body)
+    if (generation === saveGeneration.current) setSaved(true)
+  }, [updateNote])
+
+  useEffect(() => {
+    registerPendingSave(persistDraft)
+    return () => registerPendingSave(null)
+  }, [persistDraft, registerPendingSave])
+
   const scheduleSave = (nextTitle: string, nextBody: string) => {
     if (!note) return
     synced.current = { id: note.id, title: nextTitle, body: nextBody }
+    saveGeneration.current += 1
     setSaved(false)
     if (saveTimer.current) window.clearTimeout(saveTimer.current)
     saveTimer.current = window.setTimeout(() => {
-      void updateNote(note.id, nextTitle, nextBody).then(() => setSaved(true))
+      void persistDraft()
     }, 550)
   }
 
@@ -137,6 +212,53 @@ export function EditorPane() {
     setBody(next)
     scheduleSave(title, next)
   }
+
+  const toggleTaskCheckbox = useCallback((checkbox: HTMLInputElement, checked = !checkbox.checked) => {
+    const item = checkbox.closest<HTMLLIElement>('li.task-list-item')
+    if (!item) return
+    const root = item.closest('.w-md-editor-preview') ?? document
+    const items = Array.from(root.querySelectorAll<HTMLLIElement>('li.task-list-item'))
+    const position = items.indexOf(item)
+    const lineNumbers = taskLineNumbers(body)
+    const dataLine = Number(item.dataset.taskLine)
+    const lineNo = Number.isFinite(dataLine) && dataLine > 0 ? dataLine : lineNumbers[position]
+    if (!lineNo) return
+
+    const next = setTaskCheckedAtLine(body, lineNo, checked)
+    if (next !== body) onBody(next)
+  }, [body, onBody])
+
+  const handlePreviewClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement
+    const item = target.closest<HTMLLIElement>('li.task-list-item')
+    if (!item || !event.currentTarget.contains(item)) return
+    const checkbox = item.querySelector<HTMLInputElement>('input[type="checkbox"]')
+    if (checkbox) toggleTaskCheckbox(checkbox)
+  }
+
+  const previewOptions = useMemo(
+    () => ({
+      remarkPlugins: [remarkBreaks],
+      components: {
+        li: PreviewTaskLine,
+        input: (props: InputHTMLAttributes<HTMLInputElement>) => {
+          if (props.type !== 'checkbox') return <input {...props} />
+          return (
+            <input
+              {...props}
+              disabled={false}
+              readOnly
+              onClick={(event) => {
+                event.stopPropagation()
+                toggleTaskCheckbox(event.currentTarget, event.currentTarget.checked)
+              }}
+            />
+          )
+        },
+      },
+    }),
+    [toggleTaskCheckbox],
+  )
 
   if (!note) {
     return (
@@ -166,11 +288,14 @@ export function EditorPane() {
             <option key={f.id} value={f.id}>{f.name}</option>
           ))}
         </select>
+        <IconButton label="Open folders, add a folder, or move this note" onClick={() => openFolderMenu(note.id)}>
+          <FolderIcon size={15} />
+        </IconButton>
 
         <div className="mx-1 h-5 w-px bg-[var(--border)]" />
 
         <IconButton label={editMode ? 'Preview mode (Ctrl+E)' : 'Edit mode (Ctrl+E)'} active={editMode} onClick={() => setEditMode(!editMode)}>
-          <Hash size={15} />
+          <Pencil size={15} />
         </IconButton>
         <IconButton label="Focus mode (Ctrl+Shift+F / Ctrl+0)" active={focusMode} onClick={() => setFocusMode(!focusMode)}>
           <Maximize2 size={15} />
@@ -178,43 +303,6 @@ export function EditorPane() {
         <IconButton label={note.pinned ? 'Unpin' : 'Pin'} active={note.pinned} onClick={() => void togglePin(note.id)}>
           <Pin size={15} />
         </IconButton>
-
-        <div className="relative">
-          <IconButton label="Tags" active={tagOpen} onClick={() => setTagOpen((v) => !v)}>
-            <Tag size={15} />
-          </IconButton>
-          {tagOpen && (
-            <div className="absolute left-0 top-9 z-30 w-56 rounded-xl border border-[var(--border)] bg-[var(--elevated)] p-2 shadow-soft">
-              <div className="max-h-48 space-y-0.5 overflow-y-auto">
-                {tags.map((tag) => (
-                  <button
-                    key={tag.id}
-                    onClick={() => void toggleNoteTag(note.id, tag.id)}
-                    className={cn(
-                      'flex h-7 w-full items-center gap-2 rounded-lg px-2 text-xs hover:bg-[var(--surface-2)]',
-                      note.tags.some((t) => t.id === tag.id) ? 'text-[var(--accent)]' : 'text-[var(--muted)]',
-                    )}
-                  >
-                    <Hash size={12} />
-                    <span className="flex-1 text-left">{tag.name}</span>
-                    {note.tags.some((t) => t.id === tag.id) && <span className="text-[var(--accent)]">✓</span>}
-                  </button>
-                ))}
-              </div>
-              <form
-                className="mt-2 flex gap-1"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  if (!tagDraft.trim()) return
-                  void createTagForNote(note.id, tagDraft).then(() => setTagDraft(''))
-                }}
-              >
-                <TextInput value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} placeholder="New tag" className="h-7 text-xs" />
-                <Button size="sm" type="submit">Add</Button>
-              </form>
-            </div>
-          )}
-        </div>
 
         <IconButton label="Attach file" onClick={() => void (async () => {
           const picked = await open({ multiple: false, directory: false })
@@ -245,6 +333,28 @@ export function EditorPane() {
         </IconButton>
       </div>
 
+      <div className="glass-panel flex h-10 shrink-0 items-center gap-0.5 border-b border-[var(--border)] px-4">
+        <span className="mr-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--faint)]">Format</span>
+        {FORMAT_COMMANDS.map((command, index) => (
+          <span key={command.name ?? command.keyCommand ?? index} className="flex items-center">
+            {(index === 4 || index === 8 || index === 12) && (
+              <span className="mx-1.5 h-4 w-px bg-[var(--border)]" />
+            )}
+            <button
+              type="button"
+              title={String(command.buttonProps?.title ?? command.name ?? '')}
+              aria-label={String(command.buttonProps?.['aria-label'] ?? command.name ?? '')}
+              disabled={!editMode}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => editorRef.current?.commandOrchestrator?.executeCommand(command)}
+              className="flex h-7 min-w-7 items-center justify-center rounded-lg px-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              {command.icon ?? <span className="text-[10px]">{command.name}</span>}
+            </button>
+          </span>
+        ))}
+      </div>
+
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="flex min-h-0 flex-1 flex-col px-6 pb-8 pt-6">
           <input
@@ -264,21 +374,6 @@ export function EditorPane() {
             <span className="divider-line" />
           </div>
 
-          {note.tags.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {note.tags.map((tag) => (
-                <button
-                  key={tag.id}
-                  onClick={() => void toggleNoteTag(note.id, tag.id)}
-                  className="group flex items-center gap-1 rounded-md bg-[var(--surface-2)] px-2 py-1 text-[11px] text-[var(--muted)] hover:text-[var(--text)]"
-                >
-                  #{tag.name}
-                  <X size={10} className="opacity-0 group-hover:opacity-100" />
-                </button>
-              ))}
-            </div>
-          )}
-
           {noteReminders.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
               {noteReminders.map((r) => (
@@ -293,16 +388,16 @@ export function EditorPane() {
             </div>
           )}
 
-          <div className="mt-6 min-h-0 flex-1">
+          <div className="mt-6 min-h-0 flex-1" onClick={handlePreviewClick}>
             <MDEditor
+              ref={editorRef}
               value={body}
               onChange={onBody}
               preview={editMode ? 'edit' : 'preview'}
               visibleDragbar={false}
-              hideToolbar={!editMode}
-              commandsFilter={(command) => (command.name === 'fullscreen' ? false : command)}
-              previewOptions={{ remarkPlugins: [remarkBreaks] }}
+              hideToolbar
               height="100%"
+              previewOptions={previewOptions}
               textareaProps={{ readOnly: !editMode, placeholder: 'Start writing in Markdown…' }}
             />
           </div>
@@ -340,7 +435,7 @@ export function EditorPane() {
 
       <Modal open={reminderOpen} onClose={() => setReminderOpen(false)} title="Set a reminder">
         <div className="space-y-4">
-          <Field label="Remind me on" hint="Reminders are shown in the app while it is running.">
+          <Field label="Remind me on" hint="Reminders show in the app and send a Windows notification while it is running.">
             <TextInput type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} />
           </Field>
           <div className="flex justify-end gap-2">

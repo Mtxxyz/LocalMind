@@ -4,10 +4,10 @@ A minimal, futuristic, **offline-only** notes app for Windows. Built with Tauri 
 
 ## Features
 - Notes with Markdown (preview-first, `Ctrl+E` to edit)
-- Folders, tags, pinning, archive, manual-only trash
+- Folders, pinning, archive, manual-only trash
 - Full-text search (SQLite FTS5)
 - Local attachments via file picker or drag-and-drop (files copied into the app data folder, no size limit)
-- In-app reminders
+- In-app reminders with Windows notifications
 - Export notes or whole folders (including subfolders) to `.md`, full JSON backup/restore
 - 8 theme templates with Light/Dark/System modes and accent override
 - Optional app-level password lock (argon2 hash)

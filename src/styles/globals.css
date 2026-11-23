@@ -230,6 +230,10 @@ button {
 .w-md-editor-preview th,
 .w-md-editor-preview td { border-color: var(--border); padding: 6px 10px; }
 .w-md-editor-preview input[type='checkbox'] { accent-color: var(--accent); }
+/* Task checkboxes are rendered as clickable controls that edit the Markdown source line. */
+.wmde-markdown .contains-task-list li.task-list-item {
+  cursor: pointer;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

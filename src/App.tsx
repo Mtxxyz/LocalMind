@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { exit } from '@tauri-apps/api/app'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { PanelLeftOpen } from 'lucide-react'
 import { QuickCapture } from './components/capture/QuickCapture'
 import { CommandPalette } from './components/layout/CommandPalette'
 import { EditorPane } from './components/layout/EditorPane'
+import { FolderManager } from './components/layout/FolderManager'
 import { Sidebar } from './components/layout/Sidebar'
 import { TitleBar } from './components/layout/TitleBar'
 import { LockScreen } from './components/lock/LockScreen'
@@ -36,13 +38,42 @@ export default function App() {
     setSettingsOpen,
     settingsOpen,
     commandOpen,
+    folderMenuOpen,
+    closeFolderMenu,
     refreshTheme,
+    flushPendingSave,
   } = useAppStore()
 
   useEffect(() => {
     if (capture || !unlocked) return
     void loadAll()
   }, [capture, unlocked, loadAll])
+
+  useEffect(() => {
+    if (capture) return
+    const unlisten = listen('flush-and-quit', async () => {
+      try {
+        await flushPendingSave()
+      } catch {
+        // Never block quitting because a final autosave failed.
+      }
+      await exit(0)
+    })
+    return () => { void unlisten.then((fn) => fn()) }
+  }, [capture, flushPendingSave])
+
+  useEffect(() => {
+    if (capture) return
+    const unlisten = listen('flush-and-hide', async () => {
+      try {
+        await flushPendingSave()
+      } catch {
+        // Still hide if a final autosave fails while locked.
+      }
+      await getCurrentWindow().hide()
+    })
+    return () => { void unlisten.then((fn) => fn()) }
+  }, [capture, flushPendingSave])
 
   useEffect(() => {
     if (capture || !unlocked) return
@@ -58,6 +89,7 @@ export default function App() {
   useEffect(() => {
     if (capture || !unlocked) return
     const onKey = (e: KeyboardEvent) => {
+      if (settingsOpen || commandOpen || folderMenuOpen) return
       const mod = e.ctrlKey || e.metaKey
       if (!mod) return
       const key = e.key.toLowerCase()
@@ -78,12 +110,17 @@ export default function App() {
         setCommandOpen(true)
       } else if (key === 'f') {
         e.preventDefault()
-        document.getElementById('note-search')?.focus()
+        if (focusMode) {
+          setFocusMode(false)
+          window.setTimeout(() => document.getElementById('note-search')?.focus(), 0)
+        } else {
+          document.getElementById('note-search')?.focus()
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [capture, unlocked, editMode, focusMode, setEditMode, setFocusMode, setCommandOpen, createNote])
+  }, [capture, unlocked, editMode, focusMode, settingsOpen, commandOpen, folderMenuOpen, setEditMode, setFocusMode, setCommandOpen, createNote])
 
   useEffect(() => {
     if (capture || !unlocked) return
@@ -91,11 +128,12 @@ export default function App() {
       if (e.key === 'Escape') {
         if (commandOpen) setCommandOpen(false)
         else if (settingsOpen) setSettingsOpen(false)
+        else closeFolderMenu()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [capture, unlocked, commandOpen, settingsOpen, setCommandOpen, setSettingsOpen])
+  }, [capture, unlocked, commandOpen, settingsOpen, closeFolderMenu, setCommandOpen, setSettingsOpen])
 
   useEffect(() => {
     if (capture) return
@@ -109,7 +147,14 @@ export default function App() {
   }, [capture, refreshTheme])
 
   if (capture) return <QuickCapture />
-  if (!unlocked) return <LockScreen />
+  if (!unlocked) {
+    return (
+      <>
+        <LockScreen />
+        <ReminderToast />
+      </>
+    )
+  }
 
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-transparent text-[var(--text)]">
@@ -118,6 +163,7 @@ export default function App() {
         {!focusMode && <Sidebar />}
         <EditorPane />
       </div>
+      <FolderManager />
       {focusMode && (
         <button
           onClick={() => setFocusMode(false)}

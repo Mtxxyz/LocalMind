@@ -1,15 +1,9 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { save } from '@tauri-apps/plugin-dialog'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Archive,
   BellRing,
-  ChevronDown,
-  ChevronRight,
-  Download,
   FileText,
   Folder as FolderIcon,
-  Github,
-  Hash,
   Inbox,
   Lock,
   LogOut,
@@ -24,137 +18,13 @@ import {
 import { api } from '../../lib/api'
 import { cn, formatDate } from '../../lib/utils'
 import { useAppStore } from '../../stores/useAppStore'
-import type { Folder, Note, ViewFilter } from '../../types'
+import type { Note } from '../../types'
 import { EmptyState, IconButton } from '../ui'
-
-const folderColors = ['#7c8cff', '#a78bfa', '#38bdf8', '#34d399', '#fb923c', '#fb7185']
-
-function NavItem({
-  icon,
-  label,
-  active,
-  count,
-  onClick,
-}: {
-  icon: ReactNode
-  label: string
-  active: boolean
-  count?: number
-  onClick: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'group flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] transition-colors',
-        active
-          ? 'bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] font-medium text-[var(--accent)]'
-          : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]',
-      )}
-    >
-      <span className="shrink-0">{icon}</span>
-      <span className="flex-1 text-left">{label}</span>
-      {count !== undefined && count > 0 && (
-        <span className="text-[11px] tabular-nums text-[var(--faint)]">{count}</span>
-      )}
-    </button>
-  )
-}
-
-interface FolderTreeProps {
-  folders: Folder[]
-  parentId: string | null
-  depth: number
-  activeId: string | null
-  onSelect: (id: string) => void
-  onAddSub: (id: string) => void
-  subfolderFor: string | null
-  subDraft: string
-  onSubDraft: (value: string) => void
-  onSubmitSub: (parentId: string) => void
-  onCancelSub: () => void
-}
-
-function FolderTree({
-  folders,
-  parentId,
-  depth,
-  activeId,
-  onSelect,
-  onAddSub,
-  subfolderFor,
-  subDraft,
-  onSubDraft,
-  onSubmitSub,
-  onCancelSub,
-}: FolderTreeProps) {
-  const children = folders.filter((f) => f.parent_id === parentId)
-  if (children.length === 0) return null
-  return (
-    <div>
-      {children.map((folder) => (
-        <div key={folder.id}>
-          <div className="group flex items-center">
-            <button
-              onClick={() => onSelect(folder.id)}
-              style={{ paddingLeft: 10 + depth * 12 }}
-              className={cn(
-                'flex h-8 min-w-0 flex-1 items-center gap-2.5 rounded-lg pr-1 text-[13px] transition-colors',
-                activeId === folder.id
-                  ? 'bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] font-medium text-[var(--accent)]'
-                  : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]',
-              )}
-            >
-              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: folder.color }} />
-              <span className="flex-1 truncate text-left">{folder.name}</span>
-            </button>
-            <IconButton
-              label="New subfolder"
-              className="h-6 w-6 opacity-0 group-hover:opacity-100"
-              onClick={() => onAddSub(folder.id)}
-            >
-              <Plus size={12} />
-            </IconButton>
-          </div>
-          {subfolderFor === folder.id && (
-            <div style={{ paddingLeft: 18 + depth * 12 }} className="py-1 pr-2">
-              <input
-                autoFocus
-                value={subDraft}
-                onChange={(e) => onSubDraft(e.target.value)}
-                onBlur={() => onSubmitSub(folder.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') onSubmitSub(folder.id)
-                  if (e.key === 'Escape') onCancelSub()
-                }}
-                placeholder="Subfolder name"
-                className="h-7 w-full rounded-lg border border-[var(--accent)] bg-[var(--surface-2)] px-2 text-[12px] outline-none"
-              />
-            </div>
-          )}
-          <FolderTree
-            folders={folders}
-            parentId={folder.id}
-            depth={depth + 1}
-            activeId={activeId}
-            onSelect={onSelect}
-            onAddSub={onAddSub}
-            subfolderFor={subfolderFor}
-            subDraft={subDraft}
-            onSubDraft={onSubDraft}
-            onSubmitSub={onSubmitSub}
-            onCancelSub={onCancelSub}
-          />
-        </div>
-      ))}
-    </div>
-  )
-}
 
 const titles: Record<string, string> = {
   all: 'All notes',
   archive: 'Archive',
-  trash: 'Trash',
+  trash: 'Deleted',
   reminders: 'Reminders',
 }
 
@@ -162,7 +32,6 @@ export function Sidebar() {
   const {
     notes,
     folders,
-    tags,
     reminders,
     filter,
     search,
@@ -171,21 +40,14 @@ export function Sidebar() {
     selectNote,
     setFilter,
     createNote,
-    createFolder,
-    deleteFolder,
-    deleteTag,
-    setSettingsOpen,
-    setSettingsTab,
-    setUnlocked,
     emptyTrash,
+    setSettingsOpen,
+    setUnlocked,
+    flushPendingSave,
+    openFolderMenu,
+    folderMenuOpen,
   } = useAppStore()
 
-  const [adding, setAdding] = useState<'folder' | 'tag' | null>(null)
-  const [draft, setDraft] = useState('')
-  const [foldersOpen, setFoldersOpen] = useState(true)
-  const [tagsOpen, setTagsOpen] = useState(true)
-  const [subfolderFor, setSubfolderFor] = useState<string | null>(null)
-  const [subDraft, setSubDraft] = useState('')
   const [searchResults, setSearchResults] = useState<Note[] | null>(null)
 
   useEffect(() => {
@@ -197,16 +59,19 @@ export function Sidebar() {
       void api.searchNotes(search).then(setSearchResults).catch(() => setSearchResults([]))
     }, 180)
     return () => window.clearTimeout(timer)
-  }, [search])
+  }, [search, notes])
+
+  useEffect(() => {
+    setSearchResults(null)
+  }, [filter])
 
   const visible = useMemo(() => {
     let list = searchResults ?? notes
     if (filter.kind === 'folder') list = list.filter((n) => n.folder_id === filter.id)
-    if (filter.kind === 'tag') list = list.filter((n) => n.tags.some((t) => t.id === filter.id))
     if (filter.kind === 'archive') list = list.filter((n) => n.archived && !n.trashed)
     if (filter.kind === 'trash') list = list.filter((n) => n.trashed)
     if (filter.kind === 'reminders') {
-      const ids = new Set(reminders.map((r) => r.note_id))
+      const ids = new Set(reminders.filter((r) => !r.fired).map((r) => r.note_id))
       list = list.filter((n) => ids.has(n.id) && !n.trashed)
     }
     if (filter.kind !== 'trash') list = list.filter((n) => !n.trashed)
@@ -216,32 +81,15 @@ export function Sidebar() {
   const title =
     filter.kind === 'folder'
       ? folders.find((f) => f.id === filter.id)?.name ?? 'Folder'
-      : filter.kind === 'tag'
-        ? `#${useAppStore.getState().tags.find((t) => t.id === filter.id)?.name ?? 'Tag'}`
-        : titles[filter.kind] ?? 'Notes'
+      : titles[filter.kind] ?? 'Notes'
 
-  const isActive = (kind: ViewFilter['kind'], id?: string) =>
-    filter.kind === kind && (id === undefined || ('id' in filter && filter.id === id))
-
-  const submit = async () => {
-    const value = draft.trim()
-    if (!value) {
-      setAdding(null)
-      return
-    }
-    if (adding === 'folder') {
-      const color = folderColors[folders.length % folderColors.length]
-      await createFolder(value, color)
-    } else if (adding === 'tag') {
-      const tag = await api.createTag(value)
-      useAppStore.setState((s) => ({ tags: [...s.tags, tag] }))
-    }
-    setDraft('')
-    setAdding(null)
-  }
+  const reminderNoteIds = useMemo(
+    () => new Set(reminders.filter((r) => !r.fired).map((r) => r.note_id)),
+    [reminders],
+  )
 
   return (
-    <aside className="glass-panel flex h-full w-[300px] shrink-0 flex-col border-r border-[var(--border)]">
+    <aside className="glass-panel relative flex h-full w-[300px] shrink-0 flex-col border-r border-[var(--border)]">
       <div className="flex h-[56px] items-center gap-2.5 px-4">
         <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[var(--accent)] text-[var(--accent-fg)]">
           <ShieldCheck size={18} strokeWidth={2.2} />
@@ -286,140 +134,37 @@ export function Sidebar() {
       </div>
 
       <div className="flex items-center gap-1 px-3 pb-2">
-        {[
-          { kind: 'all' as const, label: 'All notes', icon: <FileText size={15} /> },
-          { kind: 'reminders' as const, label: 'Reminders', icon: <BellRing size={15} /> },
-          { kind: 'archive' as const, label: 'Archive', icon: <Archive size={15} /> },
-          { kind: 'trash' as const, label: 'Trash', icon: <Trash2 size={15} /> },
-        ].map((item) => (
-          <button
-            key={item.kind}
-            title={item.label}
-            aria-label={item.label}
-            onClick={() => setFilter({ kind: item.kind })}
-            className={cn(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors',
-              isActive(item.kind)
-                ? 'bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] text-[var(--accent)]'
-                : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]',
-            )}
-          >
-            {item.icon}
-          </button>
-        ))}
+        <button
+          onClick={() => setFilter({ kind: 'all' })}
+          className={cn(
+            'flex h-9 flex-1 items-center gap-2 rounded-lg px-2.5 text-[13px] transition-colors',
+            filter.kind === 'all'
+              ? 'bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] font-medium text-[var(--accent)]'
+              : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]',
+          )}
+        >
+          <FileText size={15} />
+          All notes
+        </button>
+        <button
+          onClick={() => openFolderMenu()}
+          aria-label="Open folders, archive, deleted and add folders"
+          title="Open folders, archive, deleted and add folders"
+          className={cn(
+            'flex h-9 flex-1 items-center gap-2 rounded-lg px-2.5 text-[13px] transition-colors',
+            folderMenuOpen
+              ? 'bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] font-medium text-[var(--accent)]'
+              : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]',
+          )}
+        >
+          <FolderIcon size={15} />
+          Folders
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 pb-2">
-        <div className="mb-1 flex items-center justify-between">
-          <button
-            onClick={() => setFoldersOpen((v) => !v)}
-            className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--faint)] hover:text-[var(--muted)]"
-          >
-            {foldersOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            Folders
-          </button>
-          <IconButton label="New folder" className="h-6 w-6" onClick={() => { setAdding('folder'); setDraft('') }}>
-            <Plus size={13} />
-          </IconButton>
-        </div>
-        {foldersOpen && (
-          <div className="space-y-0.5">
-            <FolderTree
-              folders={folders}
-              parentId={null}
-              depth={0}
-              activeId={filter.kind === 'folder' ? filter.id : null}
-              onSelect={(id) => setFilter({ kind: 'folder', id })}
-              onAddSub={(id) => { setSubfolderFor(id); setSubDraft('') }}
-              subfolderFor={subfolderFor}
-              subDraft={subDraft}
-              onSubDraft={setSubDraft}
-              onSubmitSub={(parentId) => {
-                const value = subDraft.trim()
-                if (value) {
-                  const color = folderColors[folders.length % folderColors.length]
-                  void createFolder(value, color, parentId)
-                }
-                setSubDraft('')
-                setSubfolderFor(null)
-              }}
-              onCancelSub={() => { setSubfolderFor(null); setSubDraft('') }}
-            />
-            {adding === 'folder' && (
-              <input
-                autoFocus
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onBlur={() => void submit()}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void submit()
-                  if (e.key === 'Escape') { setAdding(null); setDraft('') }
-                }}
-                placeholder="Folder name"
-                className="h-8 w-full rounded-lg border border-[var(--accent)] bg-[var(--surface-2)] px-2.5 text-[13px] outline-none"
-              />
-            )}
-          </div>
-        )}
-
-        <div className="mb-1 mt-3 flex items-center justify-between">
-          <button
-            onClick={() => setTagsOpen((v) => !v)}
-            className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--faint)] hover:text-[var(--muted)]"
-          >
-            {tagsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            Tags
-          </button>
-          <IconButton label="New tag" className="h-6 w-6" onClick={() => { setAdding('tag'); setDraft('') }}>
-            <Plus size={13} />
-          </IconButton>
-        </div>
-        {tagsOpen && (
-          <div className="space-y-0.5">
-            {tags.map((tag) => (
-              <div key={tag.id} className="group flex items-center">
-                <button
-                  onClick={() => setFilter({ kind: 'tag', id: tag.id })}
-                  className={cn(
-                    'flex h-8 flex-1 items-center gap-2.5 rounded-lg pl-3 pr-2 text-[13px] transition-colors',
-                    isActive('tag', tag.id)
-                      ? 'bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] font-medium text-[var(--accent)]'
-                      : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]',
-                  )}
-                >
-                  <Hash size={14} className="shrink-0" />
-                  <span className="flex-1 truncate text-left">{tag.name}</span>
-                </button>
-                <IconButton
-                  label={`Delete tag ${tag.name}`}
-                  className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                  onClick={() => void deleteTag(tag.id)}
-                >
-                  <Trash2 size={12} />
-                </IconButton>
-              </div>
-            ))}
-            {adding === 'tag' && (
-              <input
-                autoFocus
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onBlur={() => void submit()}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void submit()
-                  if (e.key === 'Escape') { setAdding(null); setDraft('') }
-                }}
-                placeholder="Tag name"
-                className="h-8 w-full rounded-lg border border-[var(--accent)] bg-[var(--surface-2)] px-2.5 text-[13px] outline-none"
-              />
-            )}
-          </div>
-        )}
-
-        <div className="mt-3 mb-1 flex items-center justify-between px-1">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--faint)]">
-            {title}
-          </span>
+        <div className="mb-1 flex items-center justify-between px-1">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--faint)]">{title}</span>
           <span className="rounded-md bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--faint)]">
             {visible.length}
           </span>
@@ -435,13 +180,26 @@ export function Sidebar() {
           <div className="space-y-1">
             {visible.map((note) => {
               const folder = folders.find((f) => f.id === note.folder_id)
-              const snippet = note.body.replace(/[#*`>\-[\]()!]/g, '').replace(/\s+/g, ' ').trim()
+              const snippet = note.body.replace(/[#*`>[\]()!]/g, '').replace(/\s+/g, ' ').trim()
               return (
-                <button
+                <div
                   key={note.id}
+                  role="button"
+                  tabIndex={0}
+                  draggable
                   onClick={() => selectNote(note.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      selectNote(note.id)
+                    }
+                  }}
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData('text/plain', note.id)
+                    event.dataTransfer.effectAllowed = 'move'
+                  }}
                   className={cn(
-                    'group relative w-full rounded-xl border px-3 py-2.5 text-left transition-colors',
+                    'group relative w-full cursor-grab rounded-xl border px-3 py-2.5 text-left transition-colors active:cursor-grabbing',
                     selectedId === note.id
                       ? 'border-[color-mix(in_srgb,var(--accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]'
                       : 'border-transparent hover:bg-[var(--surface-2)]',
@@ -451,7 +209,7 @@ export function Sidebar() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         {note.pinned && <Pin size={11} className="shrink-0 text-[var(--accent)]" />}
-                        {reminders.some((r) => r.note_id === note.id) && (
+                        {reminderNoteIds.has(note.id) && (
                           <BellRing size={11} className="shrink-0 text-[var(--accent)]" />
                         )}
                         <span className="truncate text-[13px] font-semibold text-[var(--text)]">
@@ -461,24 +219,28 @@ export function Sidebar() {
                       <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-[var(--muted)]">
                         {snippet || 'Empty note'}
                       </p>
-                      {note.tags.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {note.tags.slice(0, 3).map((tag) => (
-                            <span key={tag.id} className="rounded-md bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--faint)]">
-                              #{tag.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1.5">
                       <span className="text-[10px] tabular-nums text-[var(--faint)]">{formatDate(note.updated_at)}</span>
-                      {folder && (
-                        <span className="h-2 w-2 rounded-full" style={{ background: folder.color }} title={folder.name} />
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {folder && (
+                          <span className="h-2 w-2 rounded-full" style={{ background: folder.color }} title={folder.name} />
+                        )}
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            openFolderMenu(note.id)
+                          }}
+                          title="Open folders for this note"
+                          aria-label="Open folders for this note"
+                          className="flex h-5 w-5 items-center justify-center rounded-md text-[var(--faint)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--accent)]"
+                        >
+                          <FolderIcon size={12} />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </button>
+                </div>
               )
             })}
           </div>
@@ -486,23 +248,12 @@ export function Sidebar() {
       </div>
 
       <div className="border-t border-[var(--border)] p-3">
-        {filter.kind === 'folder' && (
-          <button
-            onClick={() => {
-              const id = filter.kind === 'folder' ? filter.id : null
-              if (id) void deleteFolder(id)
-            }}
-            className="mb-1 flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-xs text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]"
-          >
-            <Trash2 size={13} /> Delete this folder
-          </button>
-        )}
         {filter.kind === 'trash' && visible.length > 0 && (
           <button
             onClick={() => void emptyTrash()}
-            className="mb-1 flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-xs text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]"
+            className="mb-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg text-xs text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]"
           >
-            <Trash2 size={13} /> Empty trash
+            <Trash2 size={12} /> Empty trash
           </button>
         )}
         <div className="flex items-center gap-1">
@@ -516,16 +267,17 @@ export function Sidebar() {
           <IconButton
             label="Lock app (requires password to reopen)"
             className="h-9 w-9"
-            onClick={() => {
-              void api.setAppLocked(true)
+            onClick={() => void (async () => {
+              await flushPendingSave()
+              await api.setAppLocked(true)
               setUnlocked(false)
-            }}
+            })()}
           >
             <LogOut size={16} />
           </IconButton>
         </div>
         <div className="mt-2 flex items-center gap-1.5 px-2.5 text-[10px] text-[var(--faint)]">
-          <FolderIcon size={11} />
+          <Lock size={11} />
           100% offline · no telemetry
         </div>
       </div>

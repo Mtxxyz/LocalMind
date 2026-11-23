@@ -3,7 +3,7 @@ import { emit } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Sparkles } from 'lucide-react'
 import { api } from '../../lib/api'
-import { applyPalette, getTheme } from '../../themes'
+import { applyPalette, applyVisualSettings, getTheme } from '../../themes'
 import type { Appearance, Setting } from '../../types'
 
 export function QuickCapture() {
@@ -21,9 +21,23 @@ export function QuickCapture() {
         ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
         : appearance
       applyPalette(getTheme(map.get('theme') || 'midnight')[mode], map.get('accent') || '', mode)
+      const glass = Number(map.get('glass') ?? 55)
+      const zoom = Number(map.get('zoom') ?? 100)
+      applyVisualSettings(
+        Number.isFinite(glass) ? Math.min(100, Math.max(0, glass)) : 55,
+        Number.isFinite(zoom) ? Math.min(140, Math.max(80, zoom)) : 100,
+      )
       setColorMode(mode)
     })
     window.setTimeout(() => titleRef.current?.focus(), 80)
+  }, [])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') void getCurrentWindow().hide()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   const close = () => {
@@ -33,12 +47,17 @@ export function QuickCapture() {
   const save = async () => {
     if (saving) return
     setSaving(true)
-    await api.createNote(title.trim() || 'Quick note', body.trim())
-    await emit('notes-changed')
-    setTitle('')
-    setBody('')
-    setSaving(false)
-    close()
+    try {
+      await api.createNote(title.trim() || 'Quick note', body.trim())
+      await emit('notes-changed')
+      setTitle('')
+      setBody('')
+      close()
+    } catch {
+      // Keep the draft and the window open so the user can retry.
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (

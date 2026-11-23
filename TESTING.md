@@ -12,19 +12,20 @@ Run the standalone `src-tauri/target/release/LocalMind.exe` from a folder you ca
 - [ ] `Ctrl+Shift+N` creates a note and opens it in **edit** mode.
 - [ ] `Ctrl+E` toggles between edit and preview; selecting another note opens in **preview**.
 - [ ] Typing shows "Saving…" then "Saved locally"; content survives an app restart.
-- [ ] `Ctrl+F` focuses search; results update as you type (including tag names).
+- [ ] `Ctrl+F` focuses search; results update as you type (title and body).
 - [ ] Pin, archive, and trash work; trashed notes only disappear when restored or manually emptied.
 
 ## Organization
-- [ ] Create a folder and a nested subfolder via the `+` on the folder row.
+- [ ] Click the folder icon in the sidebar to open the folder browser.
+- [ ] Create a folder and a nested subfolder from the folder browser.
+- [ ] Drag a note onto a folder, Archive, or Deleted to move it.
 - [ ] Move a note with the folder dropdown in the editor toolbar.
-- [ ] Create a tag and toggle it on a note; filtering by tag shows the note.
 
 ## Attachments and reminders
 - [ ] Use the paperclip to attach a file — it appears under the note.
 - [ ] Drag a file from Explorer onto the editor — it is attached too.
 - [ ] Files are copied into `LocalMind-data/attachments` and survive restart.
-- [ ] Set a reminder a minute in the future — the in-app banner appears while the app runs.
+- [ ] Set a reminder a minute in the future — the in-app banner and Windows notification appear while the app runs.
 
 ## Quick capture
 - [ ] With the app closed or unfocused, `Ctrl+N` opens the Quick Capture window.
@@ -40,7 +41,7 @@ Run the standalone `src-tauri/target/release/LocalMind.exe` from a folder you ca
 ## Export / restore
 - [ ] Export a single note to `.md` with front matter.
 - [ ] Export a folder with subfolders to a single `.md`.
-- [ ] Export a JSON backup, clear data, restore it, and verify notes/tags/attachments return.
+- [ ] Export a JSON backup, clear data, restore it, and verify notes/folders/attachments return.
 
 ## Privacy
 - [ ] No accounts, telemetry, or update checks appear anywhere.

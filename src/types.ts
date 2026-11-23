@@ -8,7 +8,6 @@ export interface Note {
   trashed: boolean
   created_at: string
   updated_at: string
-  tags: Tag[]
 }
 
 export interface Folder {
@@ -17,11 +16,6 @@ export interface Folder {
   parent_id: string | null
   color: string
   sort_order: number
-}
-
-export interface Tag {
-  id: string
-  name: string
 }
 
 export interface Attachment {
@@ -51,7 +45,6 @@ export interface Setting {
 export type ViewFilter =
   | { kind: 'all' }
   | { kind: 'folder'; id: string }
-  | { kind: 'tag'; id: string }
   | { kind: 'archive' }
   | { kind: 'trash' }
   | { kind: 'reminders' }

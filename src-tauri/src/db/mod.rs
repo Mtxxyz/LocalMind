@@ -2,8 +2,6 @@ use std::{fs, path::Path};
 
 use rusqlite::{params, Connection, Result};
 
-use crate::models::Tag;
-
 pub mod schema;
 
 pub fn init(path: &Path) -> Result<Connection> {
@@ -17,8 +15,55 @@ pub fn init(path: &Path) -> Result<Connection> {
          PRAGMA synchronous=NORMAL;",
     )?;
     conn.execute_batch(schema::SCHEMA)?;
+    migrate(&conn)?;
     seed(&conn)?;
     Ok(conn)
+}
+
+/// Remove remnants of the removed tag feature and rebuild old FTS tables that
+/// still indexed tag names. Existing v1.2.1 databases must keep working.
+fn migrate(conn: &Connection) -> Result<()> {
+    conn.execute_batch("DROP TABLE IF EXISTS note_tags; DROP TABLE IF EXISTS tags;")?;
+
+    // v1.2.1 stored absolute attachment paths. Normalize them to file names so
+    // they keep working if the data folder is moved to another machine/path.
+    let legacy_paths: Vec<(String, String)> = {
+        let mut stmt = conn.prepare("SELECT id, stored_path FROM attachments")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.filter_map(Result::ok).collect()
+    };
+    for (id, stored) in legacy_paths {
+        if !Path::new(&stored).is_absolute() {
+            continue;
+        }
+        if let Some(name) = Path::new(&stored).file_name() {
+            conn.execute(
+                "UPDATE attachments SET stored_path=?1 WHERE id=?2",
+                params![name.to_string_lossy().to_string(), id],
+            )?;
+        }
+    }
+
+    let fts_sql: String = conn
+        .query_row(
+            "SELECT COALESCE(sql, '') FROM sqlite_master WHERE name='notes_fts'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or_default();
+    if fts_sql.contains("tags") {
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS notes_fts;
+             CREATE VIRTUAL TABLE notes_fts USING fts5(
+                 id UNINDEXED,
+                 title,
+                 body,
+                 tokenize = 'unicode61 remove_diacritics 2'
+             );
+             INSERT INTO notes_fts(id, title, body) SELECT id, title, body FROM notes;",
+        )?;
+    }
+    Ok(())
 }
 
 fn seed(conn: &Connection) -> Result<()> {
@@ -48,42 +93,16 @@ pub fn note_from_row(row: &rusqlite::Row<'_>) -> Result<crate::models::Note> {
         trashed: row.get::<_, i64>("trashed")? != 0,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
-        tags: Vec::new(),
     })
 }
 
-pub fn fetch_tags(conn: &Connection, note_id: &str) -> Result<Vec<Tag>> {
-    let mut stmt = conn.prepare(
-        "SELECT t.id, t.name FROM tags t
-         JOIN note_tags nt ON nt.tag_id = t.id
-         WHERE nt.note_id = ?1 ORDER BY t.name COLLATE NOCASE",
-    )?;
-    let rows = stmt.query_map(params![note_id], |row| {
-        Ok(Tag {
-            id: row.get(0)?,
-            name: row.get(1)?,
-        })
-    })?;
-    rows.collect()
-}
-
 pub fn fts_insert(conn: &Connection, note: &crate::models::Note) -> Result<()> {
-    let tags = if note.tags.is_empty() {
-        fetch_tags(conn, &note.id)?
-    } else {
-        note.tags.clone()
-    };
-    let tag_text = tags
-        .iter()
-        .map(|t| t.name.as_str())
-        .collect::<Vec<_>>()
-        .join(" ");
     // FTS5 has no UNIQUE constraint on UNINDEXED columns, so INSERT OR REPLACE
     // would append a duplicate row on every edit. Delete first to keep one row per note.
     conn.execute("DELETE FROM notes_fts WHERE id = ?1", params![note.id])?;
     conn.execute(
-        "INSERT INTO notes_fts(id, title, body, tags) VALUES(?1, ?2, ?3, ?4)",
-        params![note.id, note.title, note.body, tag_text],
+        "INSERT INTO notes_fts(id, title, body) VALUES(?1, ?2, ?3)",
+        params![note.id, note.title, note.body],
     )?;
     Ok(())
 }
@@ -91,14 +110,6 @@ pub fn fts_insert(conn: &Connection, note: &crate::models::Note) -> Result<()> {
 pub fn fts_delete(conn: &Connection, id: &str) -> Result<()> {
     conn.execute("DELETE FROM notes_fts WHERE id = ?1", params![id])?;
     Ok(())
-}
-
-/// Rebuild one note's search row from current DB state (e.g. after a tag change).
-pub fn reindex_note(conn: &Connection, id: &str) -> Result<()> {
-    let mut stmt = conn.prepare("SELECT * FROM notes WHERE id=?1")?;
-    let note = stmt.query_row(params![id], note_from_row)?;
-    drop(stmt);
-    fts_insert(conn, &note)
 }
 
 /// Escape a user query into safe FTS5 prefix tokens.
@@ -147,7 +158,6 @@ mod tests {
             trashed: false,
             created_at: "now".into(),
             updated_at: "now".into(),
-            tags: vec![],
         };
         fts_insert(&conn, &note).unwrap();
         fts_insert(&conn, &note).unwrap();

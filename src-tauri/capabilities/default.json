@@ -14,9 +14,11 @@
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",
     "core:window:allow-start-dragging",
+    "core:window:allow-set-skip-taskbar",
     "core:app:allow-exit",
     "dialog:default",
     "global-shortcut:default",
+    "notification:default",
     "shell:default"
   ]
 }

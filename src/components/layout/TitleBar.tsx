@@ -1,9 +1,11 @@
 import { exit } from '@tauri-apps/api/app'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Maximize2, Minus, X } from 'lucide-react'
+import { useAppStore } from '../../stores/useAppStore'
 
 export function TitleBar() {
   const win = getCurrentWindow()
+  const flushPendingSave = useAppStore((s) => s.flushPendingSave)
 
   return (
     <div
@@ -21,7 +23,10 @@ export function TitleBar() {
       </div>
       <div className="flex items-center" onMouseDown={(e) => e.stopPropagation()}>
         <button
-          onClick={() => void win.minimize()}
+          onClick={() => void (async () => {
+            await win.setSkipTaskbar(false)
+            await win.minimize()
+          })()}
           className="flex h-9 w-11 items-center justify-center text-[var(--muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]"
           aria-label="Minimize"
         >
@@ -35,7 +40,14 @@ export function TitleBar() {
           <Maximize2 size={12} />
         </button>
         <button
-          onClick={() => void exit(0)}
+          onClick={() => void (async () => {
+            try {
+              await flushPendingSave()
+            } catch {
+              // Exit even if the final autosave failed.
+            }
+            await exit(0)
+          })()}
           className="flex h-9 w-11 items-center justify-center text-[var(--muted)] transition-colors hover:bg-[var(--danger)] hover:text-white"
           aria-label="Close"
         >

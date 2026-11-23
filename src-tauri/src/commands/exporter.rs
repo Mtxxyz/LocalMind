@@ -1,13 +1,23 @@
-use std::fs;
+use std::{collections::HashSet, fs, path::Path};
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use rusqlite::{params, Connection};
 use tauri::State;
 
 use crate::{
+    commands::attachments::resolve_attachment_path,
     db,
-    models::{Attachment, Backup, Folder, Note, NoteTag, Reminder, Setting, Tag},
-    AppState,
+    models::{Attachment, Backup, Folder, Reminder, Setting},
+    paths, AppState,
 };
+
+fn yaml_string(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\r', "\\r")
+        .replace('\n', "\\n")
+}
 
 fn write_markdown(conn: &Connection, note_ids: &[String], target_path: &str) -> Result<(), String> {
     let mut out = String::new();
@@ -15,24 +25,17 @@ fn write_markdown(conn: &Connection, note_ids: &[String], target_path: &str) -> 
         let mut stmt = conn
             .prepare("SELECT * FROM notes WHERE id=?1")
             .map_err(|e| e.to_string())?;
-        let note: Note = stmt
+        let note = stmt
             .query_row(params![id], db::note_from_row)
             .map_err(|e| e.to_string())?;
-        let tags = db::fetch_tags(&conn, &note.id).map_err(|e| e.to_string())?;
-        let tag_line = tags
-            .iter()
-            .map(|t| t.name.clone())
-            .collect::<Vec<_>>()
-            .join(", ");
 
         if index > 0 {
             out.push_str("\n\n---\n\n");
         }
         out.push_str("---\n");
-        out.push_str(&format!("title: \"{}\"\n", note.title.replace('"', "\\\"")));
+        out.push_str(&format!("title: \"{}\"\n", yaml_string(&note.title)));
         out.push_str(&format!("created: {}\n", note.created_at));
         out.push_str(&format!("updated: {}\n", note.updated_at));
-        out.push_str(&format!("tags: [{}]\n", tag_line));
         out.push_str("---\n\n");
         out.push_str(&format!("# {}\n\n", note.title));
         out.push_str(&note.body);
@@ -48,6 +51,7 @@ pub fn export_markdown(
     target_path: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    state.ensure_unlocked()?;
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     write_markdown(&conn, &note_ids, &target_path)
 }
@@ -59,33 +63,54 @@ pub fn export_folder(
     target_path: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    state.ensure_unlocked()?;
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     let mut pending = vec![folder_id];
+    let mut visited = HashSet::new();
     let mut note_ids = Vec::new();
     while let Some(current) = pending.pop() {
-        if let Ok(mut stmt) = conn.prepare("SELECT id FROM folders WHERE parent_id=?1") {
-            if let Ok(rows) = stmt.query_map(params![current], |r| r.get::<_, String>(0)) {
-                for row in rows.flatten() {
-                    pending.push(row);
-                }
-            }
+        if !visited.insert(current.clone()) {
+            continue;
         }
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT id FROM notes WHERE folder_id=?1 AND trashed=0
-             ORDER BY pinned DESC, updated_at DESC",
-        ) {
-            if let Ok(rows) = stmt.query_map(params![current], |r| r.get::<_, String>(0)) {
-                for row in rows.flatten() {
-                    note_ids.push(row);
-                }
+        let children = {
+            let mut stmt = conn
+                .prepare("SELECT id FROM folders WHERE parent_id=?1")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params![current], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            let mut ids = Vec::new();
+            for row in rows {
+                ids.push(row.map_err(|e| e.to_string())?);
             }
-        }
+            ids
+        };
+        pending.extend(children);
+
+        let notes = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id FROM notes WHERE folder_id=?1 AND trashed=0
+                     ORDER BY pinned DESC, updated_at DESC",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params![current], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            let mut ids = Vec::new();
+            for row in rows {
+                ids.push(row.map_err(|e| e.to_string())?);
+            }
+            ids
+        };
+        note_ids.extend(notes);
     }
     write_markdown(&conn, &note_ids, &target_path)
 }
 
 #[tauri::command(rename_all = "snake_case")]
 pub fn export_backup(target_path: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.ensure_unlocked()?;
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     let mut backup = Backup::default();
 
@@ -117,38 +142,6 @@ pub fn export_backup(target_path: String, state: State<'_, AppState>) -> Result<
             .map_err(|e| e.to_string())?;
         for row in rows {
             backup.folders.push(row.map_err(|e| e.to_string())?);
-        }
-    }
-    {
-        let mut stmt = conn
-            .prepare("SELECT id,name FROM tags")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok(Tag {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                })
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            backup.tags.push(row.map_err(|e| e.to_string())?);
-        }
-    }
-    {
-        let mut stmt = conn
-            .prepare("SELECT note_id,tag_id FROM note_tags")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok(NoteTag {
-                    note_id: row.get(0)?,
-                    tag_id: row.get(1)?,
-                })
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            backup.note_tags.push(row.map_err(|e| e.to_string())?);
         }
     }
     {
@@ -209,6 +202,17 @@ pub fn export_backup(target_path: String, state: State<'_, AppState>) -> Result<
         }
     }
 
+    // Embed attachment bytes so a single backup file is portable.
+    for attachment in &backup.attachments {
+        if let Ok(path) = resolve_attachment_path(&attachment.stored_path) {
+            if let Ok(bytes) = fs::read(path) {
+                backup
+                    .attachment_data
+                    .insert(attachment.id.clone(), STANDARD.encode(bytes));
+            }
+        }
+    }
+
     let json = serde_json::to_string_pretty(&backup).map_err(|e| e.to_string())?;
     fs::write(&target_path, json).map_err(|e| e.to_string())?;
     Ok(())
@@ -216,19 +220,35 @@ pub fn export_backup(target_path: String, state: State<'_, AppState>) -> Result<
 
 #[tauri::command(rename_all = "snake_case")]
 pub fn import_backup(source_path: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.ensure_unlocked()?;
     let raw = fs::read_to_string(&source_path).map_err(|e| e.to_string())?;
     let backup: Backup = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    if backup.notes.iter().any(|n| n.id.is_empty())
+        || backup.folders.iter().any(|f| f.id.is_empty())
+    {
+        return Err("Backup is missing required data".to_string());
+    }
+
+    // Validate inline attachment bytes before touching the database. Files are
+    // only written after the transaction commits, so a failed restore cannot
+    // overwrite good attachments with metadata that rolls back.
+    for attachment in &backup.attachments {
+        if let Some(encoded) = backup.attachment_data.get(&attachment.id) {
+            STANDARD
+                .decode(encoded)
+                .map_err(|_| "Backup contains invalid attachment data".to_string())?;
+        }
+    }
+
     let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     tx.execute_batch(
         "DELETE FROM notes_fts;
-         DELETE FROM note_tags;
          DELETE FROM attachments;
          DELETE FROM reminders;
          DELETE FROM notes;
          DELETE FROM folders;
-         DELETE FROM tags;
          DELETE FROM settings;",
     )
     .map_err(|e| e.to_string())?;
@@ -247,13 +267,6 @@ pub fn import_backup(source_path: String, state: State<'_, AppState>) -> Result<
         )
         .map_err(|e| e.to_string())?;
     }
-    for t in &backup.tags {
-        tx.execute(
-            "INSERT INTO tags(id,name) VALUES(?1,?2)",
-            params![t.id, t.name],
-        )
-        .map_err(|e| e.to_string())?;
-    }
     for n in &backup.notes {
         tx.execute(
             "INSERT INTO notes(id,title,body,folder_id,pinned,archived,trashed,created_at,updated_at)
@@ -265,18 +278,16 @@ pub fn import_backup(source_path: String, state: State<'_, AppState>) -> Result<
         )
         .map_err(|e| e.to_string())?;
     }
-    for nt in &backup.note_tags {
-        tx.execute(
-            "INSERT OR IGNORE INTO note_tags(note_id,tag_id) VALUES(?1,?2)",
-            params![nt.note_id, nt.tag_id],
-        )
-        .map_err(|e| e.to_string())?;
-    }
     for a in &backup.attachments {
+        let stored_name = Path::new(&a.stored_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| a.id.clone());
         tx.execute(
             "INSERT INTO attachments(id,note_id,filename,stored_path,mime,size,created_at)
              VALUES(?1,?2,?3,?4,?5,?6,?7)",
-            params![a.id, a.note_id, a.filename, a.stored_path, a.mime, a.size, a.created_at],
+            params![a.id, a.note_id, a.filename, stored_name, a.mime, a.size, a.created_at],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -288,21 +299,35 @@ pub fn import_backup(source_path: String, state: State<'_, AppState>) -> Result<
         .map_err(|e| e.to_string())?;
     }
     for n in &backup.notes {
-        let tag_text = backup
-            .note_tags
-            .iter()
-            .filter(|nt| nt.note_id == n.id)
-            .filter_map(|nt| backup.tags.iter().find(|t| t.id == nt.tag_id))
-            .map(|t| t.name.as_str())
-            .collect::<Vec<_>>()
-            .join(" ");
         tx.execute(
-            "INSERT OR REPLACE INTO notes_fts(id,title,body,tags) VALUES(?1,?2,?3,?4)",
-            params![n.id, n.title, n.body, tag_text],
+            "INSERT OR REPLACE INTO notes_fts(id,title,body) VALUES(?1,?2,?3)",
+            params![n.id, n.title, n.body],
         )
         .map_err(|e| e.to_string())?;
     }
 
     tx.commit().map_err(|e| e.to_string())?;
+
+    let attachments_dir = paths::attachments_dir();
+    for attachment in &backup.attachments {
+        let stored_name = Path::new(&attachment.stored_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| attachment.id.clone());
+        let target = attachments_dir.join(&stored_name);
+        if let Some(encoded) = backup.attachment_data.get(&attachment.id) {
+            let bytes = STANDARD
+                .decode(encoded)
+                .map_err(|_| "Backup contains invalid attachment data".to_string())?;
+            fs::write(&target, bytes).map_err(|e| e.to_string())?;
+        } else {
+            let legacy = Path::new(&attachment.stored_path);
+            if legacy.is_file() {
+                fs::copy(legacy, &target).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
     Ok(())
 }

@@ -8,7 +8,6 @@ import type {
   Note,
   Reminder,
   Setting,
-  Tag,
   ViewFilter,
 } from '../types'
 
@@ -28,7 +27,6 @@ function effectiveAppearance(appearance: Appearance): 'light' | 'dark' {
 interface AppState {
   notes: Note[]
   folders: Folder[]
-  tags: Tag[]
   reminders: Reminder[]
   attachments: Attachment[]
   selectedId: string | null
@@ -45,28 +43,30 @@ interface AppState {
   settingsOpen: boolean
   settingsTab: 'appearance' | 'interface' | 'security' | 'data' | 'about'
   commandOpen: boolean
+  folderMenuOpen: boolean
+  folderMenuNoteId: string | null
   loading: boolean
 
   loadAll: () => Promise<void>
+  resetAfterImport: () => Promise<void>
   refreshNotes: () => Promise<void>
   refreshReminders: () => Promise<void>
   refreshAttachments: (noteId: string) => Promise<void>
-  selectNote: (id: string | null) => void
-  setFilter: (filter: ViewFilter) => void
+  selectNote: (id: string | null) => Promise<void>
+  setFilter: (filter: ViewFilter) => Promise<void>
   setSearch: (value: string) => void
   createNote: () => Promise<string>
   updateNote: (id: string, title: string, body: string) => Promise<void>
   togglePin: (id: string) => Promise<void>
   toggleArchive: (id: string) => Promise<void>
+  archiveNote: (id: string, archived: boolean) => Promise<void>
   trashNote: (id: string) => Promise<void>
   restoreNote: (id: string) => Promise<void>
   emptyTrash: () => Promise<void>
   moveNote: (id: string, folderId: string | null) => Promise<void>
   createFolder: (name: string, color: string, parentId?: string | null) => Promise<void>
+  renameFolder: (id: string, name: string) => Promise<void>
   deleteFolder: (id: string) => Promise<void>
-  createTagForNote: (noteId: string, name: string) => Promise<void>
-  toggleNoteTag: (noteId: string, tagId: string) => Promise<void>
-  deleteTag: (id: string) => Promise<void>
   addReminder: (noteId: string, dueAt: string) => Promise<void>
   deleteReminder: (id: string) => Promise<void>
   fireReminder: (id: string) => Promise<void>
@@ -83,13 +83,19 @@ interface AppState {
   setSettingsOpen: (value: boolean) => void
   setSettingsTab: (value: 'appearance' | 'interface' | 'security' | 'data' | 'about') => void
   setCommandOpen: (value: boolean) => void
+  openFolderMenu: (noteId?: string | null) => void
+  closeFolderMenu: () => void
+  registerPendingSave: (save: (() => Promise<void>) | null) => void
+  flushPendingSave: () => Promise<void>
   setUnlocked: (value: boolean) => void
 }
+
+let pendingSave: (() => Promise<void>) | null = null
+let flushPromise: Promise<void> | null = null
 
 export const useAppStore = create<AppState>((set, get) => ({
   notes: [],
   folders: [],
-  tags: [],
   reminders: [],
   attachments: [],
   selectedId: null,
@@ -106,14 +112,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   settingsOpen: false,
   settingsTab: 'appearance',
   commandOpen: false,
+  folderMenuOpen: false,
+  folderMenuNoteId: null,
   loading: true,
 
   loadAll: async () => {
     try {
-      const [notes, folders, tags, reminders, settings] = await Promise.all([
+      const [notes, folders, reminders, settings] = await Promise.all([
         api.listNotes(),
         api.listFolders(),
-        api.listTags(),
         api.listReminders(),
         api.getSettings(),
       ])
@@ -126,7 +133,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         notes,
         folders,
-        tags,
         reminders,
         themeId,
         appearance,
@@ -145,6 +151,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  resetAfterImport: async () => {
+    set({
+      selectedId: null,
+      filter: { kind: 'all' },
+      search: '',
+      attachments: [],
+      editMode: false,
+      focusMode: false,
+      folderMenuOpen: false,
+      folderMenuNoteId: null,
+    })
+    await get().loadAll()
+  },
+
   refreshNotes: async () => {
     const notes = await api.listNotes()
     set({ notes })
@@ -157,24 +177,35 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   refreshAttachments: async (noteId: string) => {
     const attachments = await api.listAttachments(noteId)
+    if (get().selectedId !== noteId) return
     set({ attachments })
   },
 
-  selectNote: (id) => {
+  selectNote: async (id) => {
+    await get().flushPendingSave()
     set({ selectedId: id, editMode: false })
     if (id) void get().refreshAttachments(id)
     else set({ attachments: [] })
   },
 
-  setFilter: (filter) => set({ filter, selectedId: null, attachments: [] }),
+  setFilter: async (filter) => {
+    await get().flushPendingSave()
+    set({ filter, search: '', selectedId: null, attachments: [] })
+  },
   setSearch: (value) => set({ search: value }),
 
   createNote: async () => {
+    await get().flushPendingSave()
     const state = get()
     const folderId = state.filter.kind === 'folder' ? state.filter.id : null
     const note = await api.createNote('Untitled note', '', folderId)
     await state.refreshNotes()
-    set({ selectedId: note.id, editMode: true, search: '' })
+    set({
+      selectedId: note.id,
+      editMode: true,
+      search: '',
+      filter: state.filter.kind === 'folder' ? state.filter : { kind: 'all' },
+    })
     void state.refreshAttachments(note.id)
     return note.id
   },
@@ -196,12 +227,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleArchive: async (id) => {
     const note = get().notes.find((n) => n.id === id)
     if (!note) return
-    await api.setNoteArchived(id, !note.archived)
+    await get().archiveNote(id, !note.archived)
+  },
+
+  archiveNote: async (id, archived) => {
+    await get().flushPendingSave()
+    if (archived) await api.setNoteTrashed(id, false)
+    await api.setNoteArchived(id, archived)
     await get().refreshNotes()
-    set({ selectedId: null })
+    if (archived && get().selectedId === id) set({ selectedId: null })
   },
 
   trashNote: async (id) => {
+    await get().flushPendingSave()
     await api.setNoteTrashed(id, true)
     await get().refreshNotes()
     set({ selectedId: null })
@@ -213,6 +251,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   emptyTrash: async () => {
+    await get().flushPendingSave()
     await api.emptyTrash()
     await get().refreshNotes()
     set({ selectedId: null })
@@ -228,37 +267,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => ({ folders: [...s.folders, folder] }))
   },
 
-  deleteFolder: async (id) => {
-    await api.deleteFolder(id)
+  renameFolder: async (id, name) => {
+    const folder = get().folders.find((f) => f.id === id)
+    if (!folder) return
+    await api.updateFolder(id, name, folder.parent_id, folder.color)
     set((s) => ({
-      folders: s.folders.filter((f) => f.id !== id),
-      filter: s.filter.kind === 'folder' && s.filter.id === id ? { kind: 'all' } : s.filter,
+      folders: s.folders.map((f) => (f.id === id ? { ...f, name } : f)),
     }))
-    await get().refreshNotes()
   },
 
-  createTagForNote: async (noteId, name) => {
-    const tag = await api.createTag(name)
-    await api.addTagToNote(noteId, tag.id)
-    const tags = await api.listTags()
-    await get().refreshNotes()
-    set({ tags })
-  },
-
-  toggleNoteTag: async (noteId, tagId) => {
-    const note = get().notes.find((n) => n.id === noteId)
-    if (!note) return
-    const has = note.tags.some((t) => t.id === tagId)
-    if (has) await api.removeTagFromNote(noteId, tagId)
-    else await api.addTagToNote(noteId, tagId)
-    await get().refreshNotes()
-  },
-
-  deleteTag: async (id) => {
-    await api.deleteTag(id)
+  deleteFolder: async (id) => {
+    await get().flushPendingSave()
+    await api.deleteFolder(id)
+    const folders = await api.listFolders()
+    const currentFilter = get().filter
     set((s) => ({
-      tags: s.tags.filter((t) => t.id !== id),
-      filter: s.filter.kind === 'tag' && s.filter.id === id ? { kind: 'all' } : s.filter,
+      folders,
+      filter: currentFilter.kind === 'folder' && !folders.some((f) => f.id === currentFilter.id)
+        ? { kind: 'all' }
+        : s.filter,
     }))
     await get().refreshNotes()
   },
@@ -275,7 +302,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   fireReminder: async (id) => {
     await api.markReminderFired(id)
-    await get().refreshReminders()
+    if (get().unlocked) await get().refreshReminders()
   },
 
   addAttachment: async (noteId, path) => {
@@ -332,5 +359,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSettingsOpen: (value) => set({ settingsOpen: value }),
   setSettingsTab: (value) => set({ settingsTab: value }),
   setCommandOpen: (value) => set({ commandOpen: value }),
+  openFolderMenu: (noteId) => set({
+    folderMenuOpen: true,
+    // Browsing is the default. Only an explicit note id opens move mode.
+    folderMenuNoteId: noteId ?? null,
+  }),
+  closeFolderMenu: () => set({ folderMenuOpen: false, folderMenuNoteId: null }),
+  registerPendingSave: (save) => { pendingSave = save },
+  flushPendingSave: async () => {
+    // Keep the callback registered: EditorPane registers a stable function, so
+    // clearing it here would silently disable all later flush-on-close/lock.
+    if (flushPromise) return flushPromise
+    const save = pendingSave
+    if (!save) return
+    flushPromise = Promise.resolve()
+      .then(() => save())
+      .finally(() => { flushPromise = null })
+    return flushPromise
+  },
   setUnlocked: (value) => set({ unlocked: value }),
 }))

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -11,7 +13,6 @@ pub struct Note {
     pub trashed: bool,
     pub created_at: String,
     pub updated_at: String,
-    pub tags: Vec<Tag>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,18 +22,6 @@ pub struct Folder {
     pub parent_id: Option<String>,
     pub color: String,
     pub sort_order: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Tag {
-    pub id: String,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NoteTag {
-    pub note_id: String,
-    pub tag_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,9 +55,10 @@ pub struct Setting {
 pub struct Backup {
     pub notes: Vec<Note>,
     pub folders: Vec<Folder>,
-    pub tags: Vec<Tag>,
-    pub note_tags: Vec<NoteTag>,
     pub attachments: Vec<Attachment>,
     pub reminders: Vec<Reminder>,
     pub settings: Vec<Setting>,
+    /// Base64 attachment bytes keyed by attachment id. Older backups omit this.
+    #[serde(default)]
+    pub attachment_data: HashMap<String, String>,
 }

@@ -16,22 +16,21 @@ export function SettingsPanel() {
     settingsOpen,
     setSettingsOpen,
     settingsTab,
-    loadAll,
+    setSettingsTab,
+    resetAfterImport,
+    flushPendingSave,
     glassiness,
     uiZoom,
     setGlassiness,
     setUiZoom,
   } = useAppStore()
-  const [tab, setTab] = useState<Tab>(settingsTab)
-
-  useEffect(() => {
-    if (settingsOpen) setTab(settingsTab)
-  }, [settingsOpen, settingsTab])
+  const tab = settingsTab
+  const setTab = setSettingsTab
   const [dataPath, setDataPath] = useState('')
   const [status, setStatus] = useState('')
 
   useEffect(() => {
-    if (settingsOpen) void api.getDataPath().then(setDataPath)
+    if (settingsOpen) void api.getDataPath().then(setDataPath).catch(() => setDataPath(''))
   }, [settingsOpen])
 
   const tabs: { id: Tab; label: string; icon: ReactNode }[] = [
@@ -43,6 +42,7 @@ export function SettingsPanel() {
   ]
 
   const exportBackup = async () => {
+    await flushPendingSave()
     const target = await save({
       filters: [{ name: 'LocalMind backup', extensions: ['json'] }],
       defaultPath: 'localmind-backup.json',
@@ -53,10 +53,11 @@ export function SettingsPanel() {
   }
 
   const importBackup = async () => {
+    await flushPendingSave()
     const source = await open({ filters: [{ name: 'LocalMind backup', extensions: ['json'] }], multiple: false })
     if (!source) return
     await api.importBackup(source)
-    await loadAll()
+    await resetAfterImport()
     setStatus('Backup restored.')
   }
 
@@ -144,6 +145,12 @@ export function SettingsPanel() {
                 <p className="text-[11px] leading-relaxed text-[var(--faint)]">
                   All notes, attachments and settings live in a <code className="rounded bg-[var(--surface-2)] px-1">LocalMind-data</code> folder next to the app. Nothing is uploaded anywhere.
                 </p>
+                {dataPath && (
+                  <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-2.5">
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--faint)]">Data folder</div>
+                    <code className="block break-all text-[11px] text-[var(--muted)]">{dataPath}</code>
+                  </div>
+                )}
               </div>
 
               <Divider />

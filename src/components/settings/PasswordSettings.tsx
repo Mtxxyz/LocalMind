@@ -17,28 +17,39 @@ export function PasswordSettings() {
 
   const set = async () => {
     setError('')
+    setMessage('')
     if (password.length < 4) return setError('Use at least 4 characters.')
     if (password !== confirm) return setError('Passwords do not match.')
-    if (hasPassword && current) {
-      const ok = await api.verifyPassword(current)
-      if (!ok) return setError('Current password is incorrect.')
+    try {
+      if (hasPassword) {
+        if (!current) return setError('Enter your current password.')
+        const ok = await api.verifyPassword(current)
+        if (!ok) return setError('Current password is incorrect.')
+      }
+      await api.setPassword(password)
+      setHasPassword(true)
+      setPassword('')
+      setConfirm('')
+      setCurrent('')
+      setMessage('Password updated.')
+    } catch {
+      setError('Could not update the password. Try again.')
     }
-    await api.setPassword(password)
-    setHasPassword(true)
-    setPassword('')
-    setConfirm('')
-    setCurrent('')
-    setMessage('Password updated.')
   }
 
   const remove = async () => {
     setError('')
-    const ok = await api.verifyPassword(current)
-    if (!ok) return setError('Current password is incorrect.')
-    await api.removePassword()
-    setHasPassword(false)
-    setCurrent('')
-    setMessage('Password removed.')
+    setMessage('')
+    try {
+      const ok = await api.verifyPassword(current)
+      if (!ok) return setError('Current password is incorrect.')
+      await api.removePassword()
+      setHasPassword(false)
+      setCurrent('')
+      setMessage('Password removed.')
+    } catch {
+      setError('Could not remove the password. Try again.')
+    }
   }
 
   return (
@@ -82,7 +93,7 @@ export function PasswordSettings() {
             Remove password
           </Button>
         )}
-        <Button variant="primary" onClick={() => void set()} disabled={!password || !confirm}>
+        <Button variant="primary" onClick={() => void set()} disabled={!password || !confirm || (hasPassword && !current)}>
           <KeyRound size={14} />
           {hasPassword ? 'Update password' : 'Set password'}
         </Button>
