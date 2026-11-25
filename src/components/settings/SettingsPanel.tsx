@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { open as openExternal } from '@tauri-apps/plugin-shell'
 import { Database, Download, Github, Keyboard, Palette, ShieldCheck, Sparkles, Type, Upload } from 'lucide-react'
@@ -16,6 +16,30 @@ import { PasswordSettings } from './PasswordSettings'
 import { ThemePicker } from './ThemePicker'
 
 type Tab = 'appearance' | 'interface' | 'security' | 'data' | 'about'
+
+interface FontOption {
+  value: string
+  label: string
+}
+
+function buildFontOptions(fonts: string[], current: string, defaultFont: string): FontOption[] {
+  const options: FontOption[] = []
+  const seen = new Set<string>()
+  const add = (value: string, label: string) => {
+    const key = value.trim().toLowerCase()
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    options.push({ value, label })
+  }
+
+  add(defaultFont, 'Default')
+  if (current.trim() && current.trim() !== defaultFont) {
+    const isInstalled = fonts.some((font) => font.toLowerCase() === current.trim().toLowerCase())
+    if (!isInstalled) add(current.trim(), `Current: ${current.trim()}`)
+  }
+  fonts.forEach((font) => add(font, font))
+  return options
+}
 
 export function SettingsPanel() {
   const {
@@ -40,20 +64,32 @@ export function SettingsPanel() {
   } = useAppStore()
   const tab = settingsTab
   const setTab = setSettingsTab
-  const fontSuggestions = [
-    'JetBrains Mono',
-    'Cascadia Code',
-    'Consolas',
-    'Inter',
-    'Segoe UI',
-    'Georgia',
-    'Arial',
-  ]
   const [dataPath, setDataPath] = useState('')
   const [status, setStatus] = useState('')
+  const [fonts, setFonts] = useState<string[]>([])
+  const [fontsLoading, setFontsLoading] = useState(false)
+
+  const editorFontOptions = useMemo(
+    () => buildFontOptions(fonts, editorFont, DEFAULT_EDITOR_FONT),
+    [fonts, editorFont],
+  )
+  const previewFontOptions = useMemo(
+    () => buildFontOptions(fonts, previewFont, DEFAULT_PREVIEW_FONT),
+    [fonts, previewFont],
+  )
 
   useEffect(() => {
     if (settingsOpen) void api.getDataPath().then(setDataPath).catch(() => setDataPath(''))
+  }, [settingsOpen])
+
+  useEffect(() => {
+    if (!settingsOpen) return
+    setFontsLoading(true)
+    void api
+      .listFonts()
+      .then(setFonts)
+      .catch(() => setFonts([]))
+      .finally(() => setFontsLoading(false))
   }, [settingsOpen])
 
   const tabs: { id: Tab; label: string; icon: ReactNode }[] = [
@@ -161,15 +197,16 @@ export function SettingsPanel() {
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
                     <span className="mb-1.5 block text-[11px] text-[var(--faint)]">Editor font</span>
-                    <input
-                      list="editor-fonts"
+                    <select
                       value={editorFont}
                       onChange={(e) => void setEditorFont(e.target.value)}
                       className="h-9 w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-2.5 text-[12px] outline-none focus:border-[var(--accent)]"
-                    />
-                    <datalist id="editor-fonts">
-                      {fontSuggestions.map((font) => <option key={font} value={font} />)}
-                    </datalist>
+                      aria-label="Editor font"
+                    >
+                      {editorFontOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
                   </label>
                   <label className="block">
                     <span className="mb-1.5 flex items-center justify-between text-[11px] text-[var(--faint)]">
@@ -191,15 +228,16 @@ export function SettingsPanel() {
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
                     <span className="mb-1.5 block text-[11px] text-[var(--faint)]">Preview font</span>
-                    <input
-                      list="preview-fonts"
+                    <select
                       value={previewFont}
                       onChange={(e) => void setPreviewFont(e.target.value)}
                       className="h-9 w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-2.5 text-[12px] outline-none focus:border-[var(--accent)]"
-                    />
-                    <datalist id="preview-fonts">
-                      {fontSuggestions.map((font) => <option key={font} value={font} />)}
-                    </datalist>
+                      aria-label="Preview font"
+                    >
+                      {previewFontOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
                   </label>
                   <label className="block">
                     <span className="mb-1.5 flex items-center justify-between text-[11px] text-[var(--faint)]">
@@ -218,7 +256,9 @@ export function SettingsPanel() {
                   </label>
                 </div>
                 <p className="text-[11px] leading-relaxed text-[var(--faint)]">
-                  Editor and preview settings are independent. Type any installed font name, or choose a suggestion.
+                  {fontsLoading
+                    ? 'Loading installed Windows fonts…'
+                    : `Editor and preview settings are independent. Choose from ${fonts.length} installed Windows font${fonts.length === 1 ? '' : 's'}, or use the default font stack.`}
                 </p>
               </div>
 
@@ -290,7 +330,7 @@ export function SettingsPanel() {
                 </div>
                 <div>
                   <div className="text-[15px] font-semibold tracking-tight">LocalMind</div>
-                  <div className="text-[11px] text-[var(--faint)]">v2.0.2 · private by design</div>
+                  <div className="text-[11px] text-[var(--faint)]">v2.1.0 · private by design</div>
                 </div>
               </div>
               <Divider />

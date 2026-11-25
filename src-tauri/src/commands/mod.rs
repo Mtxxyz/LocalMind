@@ -1,5 +1,6 @@
 pub mod attachments;
 pub mod exporter;
+pub mod fonts;
 pub mod folders;
 pub mod notes;
 pub mod reminders;

@@ -106,6 +106,9 @@ export function EditorPane() {
     openFolderMenu,
     themeId,
     appearance,
+    settingsOpen,
+    commandOpen,
+    folderMenuOpen,
   } = useAppStore()
 
   const colorMode = appearance === 'system'
@@ -122,6 +125,7 @@ export function EditorPane() {
   const saveGeneration = useRef(0)
   const synced = useRef<{ id: string; title: string; body: string } | null>(null)
   const editorRef = useRef<RefMDEditor>(null)
+  const editorAreaRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!note) {
@@ -260,6 +264,46 @@ export function EditorPane() {
     [toggleTaskCheckbox],
   )
 
+  // Ctrl+A is scoped to the note editor/preview. Other text fields (title,
+  // search, settings, dialogs) keep their native select-all behavior.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'a') return
+      if (settingsOpen || commandOpen || folderMenuOpen || reminderOpen || !selectedId) return
+
+      const area = editorAreaRef.current
+      if (!area) return
+      const target = event.target as Element | null
+      const active = document.activeElement as HTMLElement | null
+      const insideEditor = !!target && area.contains(target) || !!active && area.contains(active)
+      const noConflictingFocus = !active || active === document.body || active === document.documentElement
+      if (!insideEditor && !noConflictingFocus) return
+
+      event.preventDefault()
+      event.stopPropagation()
+
+      if (editMode) {
+        const textarea = area.querySelector<HTMLTextAreaElement>('textarea')
+        if (!textarea) return
+        textarea.focus({ preventScroll: true })
+        textarea.select()
+        return
+      }
+
+      const preview = area.querySelector<HTMLElement>('.w-md-editor-preview')
+      const selection = window.getSelection()
+      if (!preview || !selection) return
+      area.focus({ preventScroll: true })
+      const range = document.createRange()
+      range.selectNodeContents(preview)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => document.removeEventListener('keydown', onKeyDown, true)
+  }, [editMode, selectedId, settingsOpen, commandOpen, folderMenuOpen, reminderOpen])
+
   if (!note) {
     return (
       <main className="flex h-full flex-1 items-center justify-center bg-[var(--bg)]">
@@ -388,7 +432,17 @@ export function EditorPane() {
             </div>
           )}
 
-          <div className="mt-6 min-h-0 flex-1" onClick={handlePreviewClick}>
+          <div
+            ref={editorAreaRef}
+            tabIndex={-1}
+            className="mt-6 min-h-0 flex-1 outline-none"
+            onClick={handlePreviewClick}
+            onMouseDown={(event) => {
+              const target = event.target as HTMLElement
+              if (target.closest('input, textarea, button, a, [role="checkbox"]')) return
+              editorAreaRef.current?.focus({ preventScroll: true })
+            }}
+          >
             <MDEditor
               ref={editorRef}
               value={body}

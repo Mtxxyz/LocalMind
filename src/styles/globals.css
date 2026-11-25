@@ -216,6 +216,18 @@ button {
 .w-md-editor-preview h2 { font-size: calc(var(--preview-font-size) * 1.65); margin: 26px 0 12px; }
 .w-md-editor-preview h3 { font-size: calc(var(--preview-font-size) * 1.3); margin: 20px 0 10px; }
 .w-md-editor-preview p { color: var(--text); line-height: 1.75; }
+.w-md-editor-preview ul,
+.w-md-editor-preview ol {
+  margin: 0.5rem 0 0.5rem 1.25rem;
+  padding-left: 1.5rem;
+}
+.w-md-editor-preview ul { list-style-type: disc; }
+.w-md-editor-preview ol { list-style-type: decimal; }
+.w-md-editor-preview li {
+  margin: 0.2rem 0;
+  line-height: 1.75;
+}
+.w-md-editor-preview li::marker { color: var(--accent); }
 .w-md-editor-preview a { color: var(--accent); }
 .w-md-editor-preview blockquote {
   border-left: 3px solid var(--accent);
@@ -251,6 +263,10 @@ button {
 /* Task checkboxes are rendered as clickable controls that edit the Markdown source line. */
 .wmde-markdown .contains-task-list li.task-list-item {
   cursor: pointer;
+  list-style-type: none;
+}
+.wmde-markdown .contains-task-list > li.task-list-item::marker {
+  content: '';
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -169,6 +169,7 @@ fn main() {
             commands::notes::set_note_trashed,
             commands::notes::empty_trash,
             commands::notes::search_notes,
+            commands::fonts::list_fonts,
             commands::folders::list_folders,
             commands::folders::create_folder,
             commands::folders::update_folder,

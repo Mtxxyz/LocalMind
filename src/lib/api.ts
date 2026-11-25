@@ -44,6 +44,7 @@ export const api = {
   deleteReminder: (id: string) => invoke<void>('delete_reminder', { id }),
   markReminderFired: (id: string) => invoke<void>('mark_reminder_fired', { id }),
 
+  listFonts: () => invoke<string[]>('list_fonts'),
   getSettings: () => invoke<Setting[]>('get_settings'),
   setSetting: (key: string, value: string) =>
     invoke<void>('set_setting', { key, value }),
