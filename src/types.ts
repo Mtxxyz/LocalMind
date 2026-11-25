@@ -49,4 +49,6 @@ export type ViewFilter =
   | { kind: 'trash' }
   | { kind: 'reminders' }
 
+export type NoteSort = 'newest' | 'oldest' | 'created' | 'name'
+
 export type Appearance = 'light' | 'dark' | 'system'

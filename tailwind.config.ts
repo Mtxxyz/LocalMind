@@ -12,8 +12,9 @@ export default {
         soft: 'var(--shadow)',
       },
       borderRadius: {
-        xl: '14px',
-        '2xl': '18px',
+        lg: '12px',
+        xl: '18px',
+        '2xl': '24px',
       },
     },
   },

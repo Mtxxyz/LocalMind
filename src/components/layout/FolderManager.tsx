@@ -47,7 +47,7 @@ interface DestinationProps {
   trailing?: ReactNode
   onClick: () => void
   onDragOver?: (event: DragEvent<HTMLDivElement>) => void
-  onDragLeave?: () => void
+  onDragLeave?: (event: DragEvent<HTMLDivElement>) => void
   onDrop?: (event: DragEvent<HTMLDivElement>) => void
 }
 
@@ -109,6 +109,9 @@ export function FolderManager() {
     filter,
     selectedId,
     focusMode,
+    sidebarWidth,
+    uiZoom,
+    draggingNoteId,
     folderMenuOpen,
     folderMenuNoteId,
     closeFolderMenu,
@@ -148,11 +151,18 @@ export function FolderManager() {
   }, [folderMenuOpen, closeFolderMenu])
 
   useEffect(() => {
-    const update = () => setPanelLeft(Math.max(8, Math.min(focusMode ? 16 : 316, window.innerWidth - 328)))
+    const update = () => {
+      // Coordinates inside the zoomed root use layout pixels; the viewport is
+      // reported in device CSS pixels, so normalize before clamping.
+      const zoom = uiZoom / 100
+      const available = window.innerWidth / zoom
+      const desired = focusMode ? 16 : sidebarWidth + 24
+      setPanelLeft(Math.max(8, Math.min(desired, available - 344)))
+    }
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
-  }, [focusMode])
+  }, [focusMode, sidebarWidth, uiZoom])
 
   useEffect(() => {
     if (folderMenuOpen) return
@@ -205,9 +215,33 @@ export function FolderManager() {
   }
 
   const resolveDropNote = (event: DragEvent<HTMLDivElement>) =>
-    event.dataTransfer.getData('text/plain') || folderMenuNoteId || selectedId
+    event.dataTransfer.getData('application/x-localmind-note')
+      || event.dataTransfer.getData('text/plain')
+      || draggingNoteId
+      || folderMenuNoteId
+      || selectedId
+
+  const isNoteDrag = (event: DragEvent<HTMLDivElement>) =>
+    Array.from(event.dataTransfer.types).includes('application/x-localmind-note')
+      || Boolean(draggingNoteId)
+      || Boolean(folderMenuNoteId)
+
+  const runDrop = async (id: string, operation: () => Promise<void>) => {
+    setDropTarget(null)
+    // Ignore native file drops or stale ids instead of silently updating zero rows.
+    if (!notes.some((note) => note.id === id)) {
+      closeFolderMenu()
+      return
+    }
+    try {
+      await operation()
+    } finally {
+      closeFolderMenu()
+    }
+  }
 
   const allowDrop = (event: DragEvent<HTMLDivElement>, key: string) => {
+    if (!isNoteDrag(event)) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
     setDropTarget(key)
@@ -217,32 +251,28 @@ export function FolderManager() {
     event.preventDefault()
     event.stopPropagation()
     const id = resolveDropNote(event)
-    setDropTarget(null)
     if (!id) return
-    void (async () => {
+    void runDrop(id, async () => {
       await api.setNoteTrashed(id, false)
       await api.setNoteArchived(id, false)
       await moveNote(id, folderId)
-      closeFolderMenu()
-    })()
+    })
   }
 
   const dropIntoArchive = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
     event.stopPropagation()
     const id = resolveDropNote(event)
-    setDropTarget(null)
     if (!id) return
-    void archiveNote(id, true).then(closeFolderMenu)
+    void runDrop(id, () => archiveNote(id, true))
   }
 
   const dropIntoTrash = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
     event.stopPropagation()
     const id = resolveDropNote(event)
-    setDropTarget(null)
     if (!id) return
-    void trashNote(id).then(closeFolderMenu)
+    void runDrop(id, () => trashNote(id))
   }
 
   const chooseFolder = (folderId: string | null) => {
@@ -281,7 +311,11 @@ export function FolderManager() {
 
   const destinationProps = (key: string, onDrop?: (event: DragEvent<HTMLDivElement>) => void) => ({
     onDragOver: (event: DragEvent<HTMLDivElement>) => allowDrop(event, key),
-    onDragLeave: () => setDropTarget((current) => (current === key ? null : current)),
+    onDragLeave: (event: DragEvent<HTMLDivElement>) => {
+      const next = event.relatedTarget as Node | null
+      if (next && event.currentTarget.contains(next)) return
+      setDropTarget((current) => (current === key ? null : current))
+    },
     onDrop,
     highlight: dropTarget === key,
   })
@@ -509,7 +543,7 @@ export function FolderManager() {
           </button>
         )}
         <p className="px-2 py-1 text-center text-[10px] text-[var(--faint)]">
-          {menuNote ? 'Click a folder to move this note.' : 'Click to browse · drag notes here to organize.'}
+          {menuNote ? 'Drop on a folder to move this note, or click one.' : 'Click to browse · drag a note onto a folder to organize.'}
         </p>
       </div>
     </div>

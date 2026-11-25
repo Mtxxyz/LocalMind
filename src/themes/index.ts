@@ -201,3 +201,24 @@ export function applyVisualSettings(glassiness: number, uiZoom: number) {
   root.style.setProperty('--glass-blur', `${(glassiness * 0.18).toFixed(1)}px`)
   root.style.setProperty('--ui-zoom', String(uiZoom / 100))
 }
+
+function cssFontStack(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return 'inherit'
+  return trimmed.includes(',') ? trimmed : `"${trimmed.replace(/"/g, '')}"`
+}
+
+/** Applies the separate editor/preview typography preferences. */
+export function applyTypographySettings(settings: {
+  editorFont: string
+  editorSize: number
+  previewFont: string
+  previewSize: number
+}) {
+  const root = document.documentElement
+  root.style.setProperty('--editor-font-family', cssFontStack(settings.editorFont))
+  root.style.setProperty('--editor-font-size', `${Math.round(settings.editorSize)}px`)
+  root.style.setProperty('--editor-line-height', `${Math.round(settings.editorSize * 1.7)}px`)
+  root.style.setProperty('--preview-font-family', cssFontStack(settings.previewFont))
+  root.style.setProperty('--preview-font-size', `${Math.round(settings.previewSize)}px`)
+}

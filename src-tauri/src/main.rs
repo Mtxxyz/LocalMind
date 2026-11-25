@@ -17,8 +17,6 @@ use std::{
 
 use chrono::Utc;
 use rusqlite::Connection;
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
@@ -60,7 +58,7 @@ fn main() {
             });
 
             // Native reminder scheduling stays alive even when the window is
-            // hidden to the tray or the lock screen is showing.
+            // hidden or the lock screen is showing.
             let scheduler = app.handle().clone();
             let mut notified: HashSet<String> = HashSet::new();
             std::thread::spawn(move || loop {
@@ -101,7 +99,7 @@ fn main() {
                 };
                 for reminder in due {
                     // Native Windows notification comes from Rust so it still fires
-                    // while the lock screen is showing or the window is in the tray.
+                    // while the lock screen is showing or the window is hidden.
                     let _ = scheduler
                         .notification()
                         .builder()
@@ -131,58 +129,15 @@ fn main() {
                     }
                 })?;
 
-            // Build the system tray icon + menu.
-            let show_item = MenuItem::with_id(app, "show", "Show LocalMind", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
-
-            let tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().cloned().unwrap())
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.set_skip_taskbar(false);
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                    "quit" => {
-                        // Let the frontend flush its debounced save first; it calls
-                        // exit(0) when the flush (or its failure) is handled.
-                        let _ = app.emit("flush-and-quit", ());
-                    }
-                    _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.set_skip_taskbar(false);
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                })
-                .build(app)?;
-            // Keep the tray icon alive for the whole app lifetime. Dropping it
-            // removes the icon, which would strand a hidden main window.
-            app.manage(tray);
-
-            // Hide-to-tray on close instead of quitting.
+            // Closing the window quits the app after the frontend flushes its
+            // debounced save. There is no tray icon or hidden background window.
             if let Some(main) = app.get_webview_window("main") {
                 let window = main.clone();
                 main.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
-                        // Let the frontend flush its debounced save, then hide.
-                        let _ = window.emit("flush-and-hide", ());
+                        // The frontend calls exit(0) after saving (or on failure).
+                        let _ = window.emit("flush-and-quit", ());
                     }
                 });
                 let _ = main.set_skip_taskbar(false);

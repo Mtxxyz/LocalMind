@@ -1,6 +1,6 @@
 [package]
 name = "localmind"
-version = "2.0.0"
+version = "2.0.2"
 description = "LocalMind - a private, local-first notes app"
 authors = ["LocalMind"]
 edition = "2021"
@@ -10,7 +10,7 @@ rust-version = "1.77.2"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-notification = "2.8.1"

@@ -63,19 +63,6 @@ export default function App() {
   }, [capture, flushPendingSave])
 
   useEffect(() => {
-    if (capture) return
-    const unlisten = listen('flush-and-hide', async () => {
-      try {
-        await flushPendingSave()
-      } catch {
-        // Still hide if a final autosave fails while locked.
-      }
-      await getCurrentWindow().hide()
-    })
-    return () => { void unlisten.then((fn) => fn()) }
-  }, [capture, flushPendingSave])
-
-  useEffect(() => {
     if (capture || !unlocked) return
     const unlisten = listen('notes-changed', () => {
       void refreshNotes()

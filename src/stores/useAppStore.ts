@@ -1,20 +1,34 @@
 import { create } from 'zustand'
 import { api } from '../lib/api'
-import { applyPalette, applyVisualSettings, getTheme } from '../themes'
+import { applyPalette, applyTypographySettings, applyVisualSettings, getTheme } from '../themes'
 import type {
   Appearance,
   Attachment,
   Folder,
   Note,
+  NoteSort,
   Reminder,
   Setting,
   ViewFilter,
 } from '../types'
 
+export const DEFAULT_EDITOR_FONT = 'JetBrains Mono, Cascadia Code, Consolas, monospace'
+export const DEFAULT_PREVIEW_FONT = 'Inter, Segoe UI Variable, Segoe UI, system-ui, sans-serif'
+export const DEFAULT_EDITOR_SIZE = 14
+export const DEFAULT_PREVIEW_SIZE = 14
+
 function clampNumber(value: string | undefined, fallback: number, min: number, max: number) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return fallback
   return Math.min(max, Math.max(min, Math.round(parsed)))
+}
+
+function readFont(value: string | undefined, fallback: string) {
+  return value?.trim() ? value.trim() : fallback
+}
+
+function readSort(value: string | undefined): NoteSort {
+  return value === 'oldest' || value === 'created' || value === 'name' ? value : 'newest'
 }
 
 function effectiveAppearance(appearance: Appearance): 'light' | 'dark' {
@@ -40,6 +54,13 @@ interface AppState {
   focusMode: boolean
   glassiness: number
   uiZoom: number
+  noteSort: NoteSort
+  sidebarWidth: number
+  editorFont: string
+  editorSize: number
+  previewFont: string
+  previewSize: number
+  draggingNoteId: string | null
   settingsOpen: boolean
   settingsTab: 'appearance' | 'interface' | 'security' | 'data' | 'about'
   commandOpen: boolean
@@ -80,6 +101,13 @@ interface AppState {
   setFocusMode: (value: boolean) => void
   setGlassiness: (value: number) => Promise<void>
   setUiZoom: (value: number) => Promise<void>
+  setNoteSort: (value: NoteSort) => Promise<void>
+  setSidebarWidth: (value: number, persist?: boolean) => Promise<void>
+  setEditorFont: (value: string) => Promise<void>
+  setEditorSize: (value: number) => Promise<void>
+  setPreviewFont: (value: string) => Promise<void>
+  setPreviewSize: (value: number) => Promise<void>
+  setDraggingNoteId: (value: string | null) => void
   setSettingsOpen: (value: boolean) => void
   setSettingsTab: (value: 'appearance' | 'interface' | 'security' | 'data' | 'about') => void
   setCommandOpen: (value: boolean) => void
@@ -109,6 +137,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   focusMode: false,
   glassiness: 55,
   uiZoom: 100,
+  noteSort: 'newest',
+  sidebarWidth: 300,
+  editorFont: DEFAULT_EDITOR_FONT,
+  editorSize: DEFAULT_EDITOR_SIZE,
+  previewFont: DEFAULT_PREVIEW_FONT,
+  previewSize: DEFAULT_PREVIEW_SIZE,
+  draggingNoteId: null,
   settingsOpen: false,
   settingsTab: 'appearance',
   commandOpen: false,
@@ -130,6 +165,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       const accent = map.get('accent') || ''
       const glassiness = clampNumber(map.get('glass'), 55, 0, 100)
       const uiZoom = clampNumber(map.get('zoom'), 100, 80, 140)
+      const noteSort = readSort(map.get('noteSort'))
+      const sidebarWidth = clampNumber(map.get('sidebarWidth'), 300, 220, 480)
+      const editorFont = readFont(map.get('editorFont'), DEFAULT_EDITOR_FONT)
+      const editorSize = clampNumber(map.get('editorSize'), DEFAULT_EDITOR_SIZE, 11, 24)
+      const previewFont = readFont(map.get('previewFont'), DEFAULT_PREVIEW_FONT)
+      const previewSize = clampNumber(map.get('previewSize'), DEFAULT_PREVIEW_SIZE, 12, 28)
       set({
         notes,
         folders,
@@ -139,12 +180,19 @@ export const useAppStore = create<AppState>((set, get) => ({
         accent,
         glassiness,
         uiZoom,
+        noteSort,
+        sidebarWidth,
+        editorFont,
+        editorSize,
+        previewFont,
+        previewSize,
         loading: false,
       })
       const template = getTheme(themeId)
       const mode = effectiveAppearance(appearance)
       applyPalette(template[mode], accent, mode)
       applyVisualSettings(glassiness, uiZoom)
+      applyTypographySettings({ editorFont, editorSize, previewFont, previewSize })
     } catch (error) {
       console.error('Failed to load LocalMind data', error)
       set({ loading: false })
@@ -355,6 +403,67 @@ export const useAppStore = create<AppState>((set, get) => ({
     applyVisualSettings(get().glassiness, next)
     await api.setSetting('zoom', String(next))
   },
+
+  setNoteSort: async (value) => {
+    set({ noteSort: value })
+    await api.setSetting('noteSort', value)
+  },
+
+  setSidebarWidth: async (value, persist = true) => {
+    const next = Math.min(480, Math.max(220, Math.round(value)))
+    set({ sidebarWidth: next })
+    if (persist) await api.setSetting('sidebarWidth', String(next))
+  },
+
+  setEditorFont: async (value) => {
+    const next = value.trim() || DEFAULT_EDITOR_FONT
+    set({ editorFont: next })
+    applyTypographySettings({
+      editorFont: next,
+      editorSize: get().editorSize,
+      previewFont: get().previewFont,
+      previewSize: get().previewSize,
+    })
+    await api.setSetting('editorFont', next)
+  },
+
+  setEditorSize: async (value) => {
+    const next = Math.min(24, Math.max(11, Math.round(value)))
+    set({ editorSize: next })
+    applyTypographySettings({
+      editorFont: get().editorFont,
+      editorSize: next,
+      previewFont: get().previewFont,
+      previewSize: get().previewSize,
+    })
+    await api.setSetting('editorSize', String(next))
+  },
+
+  setPreviewFont: async (value) => {
+    const next = value.trim() || DEFAULT_PREVIEW_FONT
+    set({ previewFont: next })
+    applyTypographySettings({
+      editorFont: get().editorFont,
+      editorSize: get().editorSize,
+      previewFont: next,
+      previewSize: get().previewSize,
+    })
+    await api.setSetting('previewFont', next)
+  },
+
+  setPreviewSize: async (value) => {
+    const next = Math.min(28, Math.max(12, Math.round(value)))
+    set({ previewSize: next })
+    applyTypographySettings({
+      editorFont: get().editorFont,
+      editorSize: get().editorSize,
+      previewFont: get().previewFont,
+      previewSize: next,
+    })
+    await api.setSetting('previewSize', String(next))
+  },
+
+  setDraggingNoteId: (value) => set({ draggingNoteId: value }),
 
   setSettingsOpen: (value) => set({ settingsOpen: value }),
   setSettingsTab: (value) => set({ settingsTab: value }),

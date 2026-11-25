@@ -21,6 +21,13 @@
   --glass-alpha: 45%;
   --glass-blur: 9.9px;
   --ui-zoom: 1;
+  --editor-font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  --editor-font-size: 14px;
+  --editor-line-height: 24px;
+  --preview-font-family: 'Inter', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  --preview-font-size: 14px;
+  --radius-panel: 22px;
+  --radius-control: 14px;
   color-scheme: dark;
 }
 
@@ -85,7 +92,7 @@ body {
 
 /* Shape-based accents for controls and cards. */
 .shape-card {
-  border-radius: 18px;
+  border-radius: 24px;
   border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
   background: color-mix(in srgb, var(--surface) var(--glass-alpha), transparent);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent);
@@ -94,8 +101,10 @@ body {
   border-radius: 999px;
 }
 
-::selection {
+::selection,
+.w-md-editor-text-input::selection {
   background: var(--selection);
+  color: var(--text);
 }
 
 button,
@@ -153,14 +162,20 @@ button {
   color: var(--accent) !important;
   background: var(--surface-2) !important;
 }
+.w-md-editor {
+  --md-editor-font-family: var(--editor-font-family);
+}
+/* The editor's visible text and the transparent textarea that paints selection
+   must share identical, whole-pixel metrics or highlights drift as lines wrap. */
 .w-md-editor-text,
+.w-md-editor-text-pre,
 .w-md-editor-text-pre > code,
 .w-md-editor-text-input {
   background: transparent !important;
   color: var(--text) !important;
-  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace !important;
-  font-size: 13.5px !important;
-  line-height: 1.75 !important;
+  font-family: var(--editor-font-family) !important;
+  font-size: var(--editor-font-size) !important;
+  line-height: var(--editor-line-height) !important;
 }
 .w-md-editor,
 .w-md-editor .w-md-editor-content,
@@ -186,6 +201,9 @@ button {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
+  font-family: var(--preview-font-family);
+  font-size: var(--preview-font-size);
+  line-height: 1.75;
 }
 .w-md-editor-preview h1,
 .w-md-editor-preview h2,
@@ -194,10 +212,10 @@ button {
   font-weight: 650;
   letter-spacing: -0.02em;
 }
-.w-md-editor-preview h1 { font-size: 1.9rem; margin: 0 0 18px; }
-.w-md-editor-preview h2 { font-size: 1.45rem; margin: 26px 0 12px; }
-.w-md-editor-preview h3 { font-size: 1.15rem; margin: 20px 0 10px; }
-.w-md-editor-preview p { color: var(--text); line-height: 1.8; }
+.w-md-editor-preview h1 { font-size: calc(var(--preview-font-size) * 2.05); margin: 0 0 18px; }
+.w-md-editor-preview h2 { font-size: calc(var(--preview-font-size) * 1.65); margin: 26px 0 12px; }
+.w-md-editor-preview h3 { font-size: calc(var(--preview-font-size) * 1.3); margin: 20px 0 10px; }
+.w-md-editor-preview p { color: var(--text); line-height: 1.75; }
 .w-md-editor-preview a { color: var(--accent); }
 .w-md-editor-preview blockquote {
   border-left: 3px solid var(--accent);
@@ -244,12 +262,17 @@ button {
   }
 }
 /* Rounded UI */
-aside, main, .w-md-editor {
-  border-radius: 16px !important;
+aside, main {
+  border-radius: var(--radius-panel) !important;
   overflow: hidden;
 }
+.w-md-editor {
+  border-radius: var(--radius-panel) !important;
+  /* Selection rectangles must not be clipped by the editor's rounded shell. */
+  overflow: visible;
+}
 button, input, textarea, select {
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 input[type='range'] {

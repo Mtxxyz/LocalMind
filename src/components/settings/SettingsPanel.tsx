@@ -1,10 +1,16 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { open as openExternal } from '@tauri-apps/plugin-shell'
-import { Database, Download, Github, Keyboard, Palette, ShieldCheck, Sparkles, Upload } from 'lucide-react'
+import { Database, Download, Github, Keyboard, Palette, ShieldCheck, Sparkles, Type, Upload } from 'lucide-react'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/utils'
-import { useAppStore } from '../../stores/useAppStore'
+import {
+  DEFAULT_EDITOR_FONT,
+  DEFAULT_EDITOR_SIZE,
+  DEFAULT_PREVIEW_FONT,
+  DEFAULT_PREVIEW_SIZE,
+  useAppStore,
+} from '../../stores/useAppStore'
 import { Button, Divider, Modal } from '../ui'
 import { PasswordSettings } from './PasswordSettings'
 import { ThemePicker } from './ThemePicker'
@@ -21,11 +27,28 @@ export function SettingsPanel() {
     flushPendingSave,
     glassiness,
     uiZoom,
+    editorFont,
+    editorSize,
+    previewFont,
+    previewSize,
     setGlassiness,
     setUiZoom,
+    setEditorFont,
+    setEditorSize,
+    setPreviewFont,
+    setPreviewSize,
   } = useAppStore()
   const tab = settingsTab
   const setTab = setSettingsTab
+  const fontSuggestions = [
+    'JetBrains Mono',
+    'Cascadia Code',
+    'Consolas',
+    'Inter',
+    'Segoe UI',
+    'Georgia',
+    'Arial',
+  ]
   const [dataPath, setDataPath] = useState('')
   const [status, setStatus] = useState('')
 
@@ -130,9 +153,87 @@ export function SettingsPanel() {
 
               <Divider />
 
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted)]">
+                  <Type size={14} /> Typography
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] text-[var(--faint)]">Editor font</span>
+                    <input
+                      list="editor-fonts"
+                      value={editorFont}
+                      onChange={(e) => void setEditorFont(e.target.value)}
+                      className="h-9 w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-2.5 text-[12px] outline-none focus:border-[var(--accent)]"
+                    />
+                    <datalist id="editor-fonts">
+                      {fontSuggestions.map((font) => <option key={font} value={font} />)}
+                    </datalist>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 flex items-center justify-between text-[11px] text-[var(--faint)]">
+                      Editor size <span className="tabular-nums text-[var(--accent)]">{editorSize}px</span>
+                    </span>
+                    <input
+                      type="range"
+                      min={11}
+                      max={24}
+                      step={1}
+                      value={editorSize}
+                      onChange={(e) => void setEditorSize(Number(e.target.value))}
+                      className="mt-2 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--surface-2)] accent-[var(--accent)]"
+                      aria-label="Editor text size"
+                    />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] text-[var(--faint)]">Preview font</span>
+                    <input
+                      list="preview-fonts"
+                      value={previewFont}
+                      onChange={(e) => void setPreviewFont(e.target.value)}
+                      className="h-9 w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-2.5 text-[12px] outline-none focus:border-[var(--accent)]"
+                    />
+                    <datalist id="preview-fonts">
+                      {fontSuggestions.map((font) => <option key={font} value={font} />)}
+                    </datalist>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 flex items-center justify-between text-[11px] text-[var(--faint)]">
+                      Preview size <span className="tabular-nums text-[var(--accent)]">{previewSize}px</span>
+                    </span>
+                    <input
+                      type="range"
+                      min={12}
+                      max={28}
+                      step={1}
+                      value={previewSize}
+                      onChange={(e) => void setPreviewSize(Number(e.target.value))}
+                      className="mt-2 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--surface-2)] accent-[var(--accent)]"
+                      aria-label="Preview text size"
+                    />
+                  </label>
+                </div>
+                <p className="text-[11px] leading-relaxed text-[var(--faint)]">
+                  Editor and preview settings are independent. Type any installed font name, or choose a suggestion.
+                </p>
+              </div>
+
+              <Divider />
+
               <Button
                 variant="ghost"
-                onClick={() => { void setGlassiness(55); void setUiZoom(100) }}
+                onClick={() => {
+                  void setGlassiness(55)
+                  void setUiZoom(100)
+                  void setEditorFont(DEFAULT_EDITOR_FONT)
+                  void setEditorSize(DEFAULT_EDITOR_SIZE)
+                  void setPreviewFont(DEFAULT_PREVIEW_FONT)
+                  void setPreviewSize(DEFAULT_PREVIEW_SIZE)
+                }}
               >
                 Reset interface defaults
               </Button>
@@ -189,7 +290,7 @@ export function SettingsPanel() {
                 </div>
                 <div>
                   <div className="text-[15px] font-semibold tracking-tight">LocalMind</div>
-                  <div className="text-[11px] text-[var(--faint)]">v0.1.0 · private by design</div>
+                  <div className="text-[11px] text-[var(--faint)]">v2.0.2 · private by design</div>
                 </div>
               </div>
               <Divider />

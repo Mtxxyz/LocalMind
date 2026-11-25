@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   Archive,
+  ArrowDownUp,
   BellRing,
+  Check,
   FileText,
   Folder as FolderIcon,
   Inbox,
@@ -18,7 +20,7 @@ import {
 import { api } from '../../lib/api'
 import { cn, formatDate } from '../../lib/utils'
 import { useAppStore } from '../../stores/useAppStore'
-import type { Note } from '../../types'
+import type { Note, NoteSort } from '../../types'
 import { EmptyState, IconButton } from '../ui'
 
 const titles: Record<string, string> = {
@@ -27,6 +29,13 @@ const titles: Record<string, string> = {
   trash: 'Deleted',
   reminders: 'Reminders',
 }
+
+const sortOptions: { id: NoteSort; label: string }[] = [
+  { id: 'newest', label: 'Newest' },
+  { id: 'oldest', label: 'Oldest' },
+  { id: 'created', label: 'Created' },
+  { id: 'name', label: 'Name' },
+]
 
 export function Sidebar() {
   const {
@@ -46,9 +55,17 @@ export function Sidebar() {
     flushPendingSave,
     openFolderMenu,
     folderMenuOpen,
+    noteSort,
+    setNoteSort,
+    sidebarWidth,
+    setSidebarWidth,
+    uiZoom,
+    setDraggingNoteId,
   } = useAppStore()
 
   const [searchResults, setSearchResults] = useState<Note[] | null>(null)
+  const [sortOpen, setSortOpen] = useState(false)
+  const resizeCleanup = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     if (!search.trim()) {
@@ -65,6 +82,25 @@ export function Sidebar() {
     setSearchResults(null)
   }, [filter])
 
+  useEffect(() => () => resizeCleanup.current?.(), [])
+
+  useEffect(() => {
+    if (!sortOpen) return
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('[data-note-sort]')) setSortOpen(false)
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSortOpen(false)
+    }
+    window.addEventListener('mousedown', onPointerDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [sortOpen])
+
   const visible = useMemo(() => {
     let list = searchResults ?? notes
     if (filter.kind === 'folder') list = list.filter((n) => n.folder_id === filter.id)
@@ -75,8 +111,18 @@ export function Sidebar() {
       list = list.filter((n) => ids.has(n.id) && !n.trashed)
     }
     if (filter.kind !== 'trash') list = list.filter((n) => !n.trashed)
-    return list
-  }, [notes, searchResults, filter, reminders])
+    const sorted = [...list]
+    if (noteSort === 'name') {
+      sorted.sort((a, b) => (a.title || 'Untitled note').localeCompare(b.title || 'Untitled note'))
+    } else if (noteSort === 'oldest') {
+      sorted.sort((a, b) => a.updated_at.localeCompare(b.updated_at))
+    } else if (noteSort === 'created') {
+      sorted.sort((a, b) => b.created_at.localeCompare(a.created_at))
+    } else {
+      sorted.sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+    }
+    return sorted
+  }, [notes, searchResults, filter, reminders, noteSort])
 
   const title =
     filter.kind === 'folder'
@@ -88,8 +134,35 @@ export function Sidebar() {
     [reminders],
   )
 
+  const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    resizeCleanup.current?.()
+    const startX = event.clientX
+    const startWidth = sidebarWidth
+    const zoom = uiZoom / 100
+
+    const onMove = (moveEvent: PointerEvent) => {
+      void setSidebarWidth(startWidth + (moveEvent.clientX - startX) / zoom, false)
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
+      resizeCleanup.current = null
+      void setSidebarWidth(useAppStore.getState().sidebarWidth)
+    }
+
+    resizeCleanup.current = stop
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+  }
+
   return (
-    <aside className="glass-panel relative flex h-full w-[300px] shrink-0 flex-col border-r border-[var(--border)]">
+    <aside
+      style={{ width: sidebarWidth }}
+      className="glass-panel relative flex h-full shrink-0 flex-col border-r border-[var(--border)]"
+    >
       <div className="flex h-[56px] items-center gap-2.5 px-4">
         <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[var(--accent)] text-[var(--accent-fg)]">
           <ShieldCheck size={18} strokeWidth={2.2} />
@@ -148,6 +221,16 @@ export function Sidebar() {
         </button>
         <button
           onClick={() => openFolderMenu()}
+          onDragOver={(event) => {
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'move'
+          }}
+          onDrop={(event) => {
+            event.preventDefault()
+            const id = event.dataTransfer.getData('application/x-localmind-note')
+              || event.dataTransfer.getData('text/plain')
+            if (id) openFolderMenu(id)
+          }}
           aria-label="Open folders, archive, deleted and add folders"
           title="Open folders, archive, deleted and add folders"
           className={cn(
@@ -162,14 +245,57 @@ export function Sidebar() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 pb-2">
+      <div className="relative px-3 pb-2">
         <div className="mb-1 flex items-center justify-between px-1">
           <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--faint)]">{title}</span>
-          <span className="rounded-md bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--faint)]">
-            {visible.length}
-          </span>
+          <div className="flex items-center gap-1" data-note-sort>
+            <span className="rounded-md bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--faint)]">
+              {visible.length}
+            </span>
+            <button
+              onClick={() => setSortOpen((open) => !open)}
+              aria-label={`Sort notes: ${sortOptions.find((option) => option.id === noteSort)?.label}`}
+              aria-expanded={sortOpen}
+              aria-haspopup="menu"
+              title="Sort notes"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--faint)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--accent)]"
+            >
+              <ArrowDownUp size={13} />
+            </button>
+          </div>
         </div>
 
+        {sortOpen && (
+          <div
+            role="menu"
+            aria-label="Sort notes"
+            data-note-sort
+            className="absolute right-3 top-7 z-30 w-36 rounded-xl border border-[var(--border)] bg-[var(--elevated)] p-1 shadow-soft"
+          >
+            {sortOptions.map((option) => (
+              <button
+                key={option.id}
+                role="menuitem"
+                onClick={() => {
+                  void setNoteSort(option.id)
+                  setSortOpen(false)
+                }}
+                className={cn(
+                  'flex h-8 w-full items-center justify-between rounded-lg px-2.5 text-[12px] transition-colors',
+                  noteSort === option.id
+                    ? 'bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] text-[var(--accent)]'
+                    : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]',
+                )}
+              >
+                {option.label}
+                {noteSort === option.id && <Check size={13} />}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-3 pb-2">
         {visible.length === 0 ? (
           <EmptyState
             icon={filter.kind === 'trash' ? <Trash2 size={22} /> : filter.kind === 'archive' ? <Archive size={22} /> : search ? <Search size={22} /> : <Inbox size={22} />}
@@ -195,9 +321,15 @@ export function Sidebar() {
                     }
                   }}
                   onDragStart={(event) => {
+                    // Open the folder targets immediately so the dragged note can
+                    // be dropped without a separate click first.
+                    setDraggingNoteId(note.id)
+                    event.dataTransfer.setData('application/x-localmind-note', note.id)
                     event.dataTransfer.setData('text/plain', note.id)
                     event.dataTransfer.effectAllowed = 'move'
+                    openFolderMenu(note.id)
                   }}
+                  onDragEnd={() => setDraggingNoteId(null)}
                   className={cn(
                     'group relative w-full cursor-grab rounded-xl border px-3 py-2.5 text-left transition-colors active:cursor-grabbing',
                     selectedId === note.id
@@ -280,6 +412,17 @@ export function Sidebar() {
           <Lock size={11} />
           100% offline · no telemetry
         </div>
+      </div>
+
+      <div
+        role="separator"
+        aria-label="Resize sidebar"
+        aria-orientation="vertical"
+        title="Drag to resize the sidebar"
+        onPointerDown={startResize}
+        className="absolute right-0 top-0 z-20 h-full w-1.5 cursor-col-resize touch-none transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_28%,transparent)]"
+      >
+        <span className="absolute right-0 top-1/2 h-12 w-0.5 -translate-y-1/2 rounded-full bg-[var(--border)]" />
       </div>
     </aside>
   )
